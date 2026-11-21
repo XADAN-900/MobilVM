@@ -92,11 +92,12 @@ Future<_KernelInfo?> _kernelInfo(_Reader r, int pos, int size) async {
       20 => 'ppc',
       21 => 'ppc64',
       243 => cls == 2 ? 'riscv64' : null,
+      4 => 'm68k',
       _ => null,
     };
     if (other != null) {
       k.arch = other;
-      k.kind = 'ELF ${cls == 2 ? 64 : 32} (${switch (other) { 'arm64' => 'AArch64', 'arm32' => 'ARM', 'ppc' => 'PowerPC', 'ppc64' => 'PowerPC 64', _ => 'RISC-V' }})';
+      k.kind = 'ELF ${cls == 2 ? 64 : 32} (${switch (other) { 'arm64' => 'AArch64', 'arm32' => 'ARM', 'ppc' => 'PowerPC', 'ppc64' => 'PowerPC 64', 'm68k' => 'Motorola 68k', _ => 'RISC-V' }})';
       // vmlinux ELF'i: Linux çekirdeği mi?
       k.linux = _has(head, 'Linux version'.codeUnits) || _has(head, const [0x76, 0x6D, 0x6C, 0x69, 0x6E, 0x75, 0x78]);
       return k;
@@ -459,5 +460,55 @@ String _archText(String? arch) => switch (arch) {
       'ppc' => 'PowerPC',
       'ppc64' => 'PowerPC 64',
       'riscv64' => 'RISC-V 64',
+      'm68k' => 'Motorola 68k',
       _ => '?',
     };
+
+/// Doğrudan çekirdek açılışı için bir ISO'dan çekirdek ve initrd dosyalarını çıkarır
+/// (ör. Debian m68k: install/kernels/vmlinux-*, install/cdrom/initrd.gz).
+/// Sıkıştırılmış (.gz) çekirdek açılır; initrd olduğu gibi bırakılır (Linux kendisi açar).
+/// Dönüş: (çekirdek yolu, initrd yolu); bulunamayan null.
+Future<(String?, String?)> extractKernelFromIso(String isoPath, String destDir, {String? arch}) async {
+  final f = await File(isoPath).open();
+  try {
+    final r = _Reader(f, await f.length());
+    final pvd = await r.read(32768, 6);
+    if (pvd.length < 6 || String.fromCharCodes(pvd.sublist(1, 6)) != 'CD001') return (null, null);
+    final files = (await _walkIso(r)).where((e) => !e.dir && e.size > 0 && e.size < 256 * 1024 * 1024).toList();
+    int score(_IsoFile e) {
+      var sc = 0;
+      if (arch != null && e.path.contains(arch)) sc += 100;
+      if (e.path.contains('install')) sc += 20;
+      if (e.path.contains('cdrom')) sc += 10;
+      if (e.path.contains('gtk') || e.path.contains('xen') || e.path.contains('debug')) sc -= 50;
+      return sc;
+    }
+
+    _IsoFile? best(RegExp re) {
+      final c = files.where((e) => re.hasMatch(e.path.split('/').last)).toList()
+        ..sort((a, b) => score(b) != score(a) ? score(b) - score(a) : a.path.length - b.path.length);
+      return c.isEmpty ? null : c.first;
+    }
+
+    final kernel = best(RegExp(r'^(vmlinux|vmlinuz|linux|kernel)([-.].*)?$'));
+    final initrd = best(RegExp(r'^(initrd|initramfs)([-.].*)?$'));
+    final stem = isoPath.split('/').last.replaceAll(RegExp(r'\.[^.]+$'), '');
+    Future<String?> save(_IsoFile? e, String suffix, {bool gunzip = false}) async {
+      if (e == null) return null;
+      var data = await r.read(e.lba * 2048, e.size);
+      var name = '$stem-$suffix';
+      if (gunzip && data.length > 2 && data[0] == 0x1F && data[1] == 0x8B) {
+        data = Uint8List.fromList(gzip.decode(data));
+      } else if (e.path.endsWith('.gz')) {
+        name += '.gz';
+      }
+      final out = File('$destDir/$name');
+      await out.writeAsBytes(data, flush: true);
+      return out.path;
+    }
+
+    return (await save(kernel, 'kernel', gunzip: true), await save(initrd, 'initrd'));
+  } finally {
+    await f.close();
+  }
+}

@@ -15,6 +15,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.view.InputDevice;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.WindowManager;
 
 import org.json.JSONObject;
@@ -144,6 +147,12 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                     break;
                 }
                 case "sharedList": r.success(listDir(QemuEnv.sharedDir(ctx, call.argument("id")))); break;
+                case "sharedExport": {
+                    File dir = QemuEnv.sharedDir(ctx, call.argument("id"));
+                    String path = call.argument("path");
+                    bg(r, () -> exportFile(dir, path));
+                    break;
+                }
                 case "sharedDelete": {
                     String id = call.argument("id");
                     r.success(deleteInside(QemuEnv.sharedDir(ctx, id), call.argument("path")));
@@ -215,7 +224,8 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
 
                 case "displayAttach": {
                     if (display != null) display.dispose();
-                    display = new DisplaySession(textures);
+                    display = new DisplaySession(textures, Store.settingBool(ctx, "sound", true),
+                            Store.settingBool(ctx, "muted", false));
                     r.success(display.textureId());
                     break;
                 }
@@ -239,6 +249,22 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                         display.rfb().sendKey(ks.intValue(), Boolean.TRUE.equals(call.argument("down")));
                     }
                     r.success(null);
+                    break;
+                }
+                case "setMuted": {
+                    boolean m = Boolean.TRUE.equals(call.argument("muted"));
+                    if (display != null) display.setMuted(m);
+                    Map<String, Object> st = Store.getSettings(ctx);
+                    st.put("muted", m);
+                    Store.saveSettings(ctx, st);
+                    r.success(null);
+                    break;
+                }
+                case "clipboardSend": {
+                    String text = call.argument("text");
+                    boolean ok = display != null && text != null && !text.isEmpty();
+                    if (ok) display.rfb().sendClipboard(text);
+                    r.success(ok);
                     break;
                 }
                 case "screenshot": {
@@ -450,7 +476,8 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
         if (running != null) {
             VmConfig rv = Store.getVm(ctx, running);
             if (rv != null && (oldPaths.contains(canon(rv.isoPath)) || oldPaths.contains(canon(rv.floppyPath))
-                    || oldPaths.contains(canon(rv.diskPath)))) {
+                    || oldPaths.contains(canon(rv.diskPath)) || oldPaths.contains(canon(rv.kernelPath))
+                    || oldPaths.contains(canon(rv.initrdPath)) || oldPaths.contains(canon(rv.biosPath)))) {
                 throw new IllegalStateException("IN_USE_RUNNING");
             }
         }
@@ -467,6 +494,9 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
             if (oldPaths.contains(canon(v.isoPath)) || canon(v.isoPath).equals(nf.getPath())) { v.isoPath = target; changed = true; }
             if (oldPaths.contains(canon(v.floppyPath)) || canon(v.floppyPath).equals(nf.getPath())) { v.floppyPath = target; changed = true; }
             if (oldPaths.contains(canon(v.diskPath)) || canon(v.diskPath).equals(nf.getPath())) { v.diskPath = target; changed = true; }
+            if (oldPaths.contains(canon(v.kernelPath)) || canon(v.kernelPath).equals(nf.getPath())) { v.kernelPath = target; changed = true; }
+            if (oldPaths.contains(canon(v.initrdPath)) || canon(v.initrdPath).equals(nf.getPath())) { v.initrdPath = target; changed = true; }
+            if (oldPaths.contains(canon(v.biosPath)) || canon(v.biosPath).equals(nf.getPath())) { v.biosPath = target; changed = true; }
         }
         if (changed) Store.saveVms(ctx, vms);
         return target;
@@ -652,6 +682,114 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
         }
         try { QmpClient.exec("quit", null); } catch (Exception ignored) { }
         return null;
+    }
+
+    /** Paylaşılan klasördeki bir dosyayı telefonun İndirilenler/Strata klasörüne kopyalar. */
+    private Object exportFile(File dir, String path) throws Exception {
+        File f = new File(path);
+        if (!f.getCanonicalPath().startsWith(dir.getCanonicalPath() + File.separator) || !f.isFile()) {
+            throw new IllegalArgumentException("not a shared file");
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            ContentValues v = new ContentValues();
+            v.put(MediaStore.MediaColumns.DISPLAY_NAME, f.getName());
+            v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Strata");
+            Uri uri = ctx.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+            if (uri == null) throw new IllegalStateException("MediaStore insert failed");
+            try (InputStream is = new java.io.FileInputStream(f);
+                 OutputStream os = ctx.getContentResolver().openOutputStream(uri)) {
+                copy(is, os);
+            }
+            return Environment.DIRECTORY_DOWNLOADS + "/Strata/" + f.getName();
+        }
+        File outDir = new File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "Strata");
+        //noinspection ResultOfMethodCallIgnored
+        outDir.mkdirs();
+        File out = new File(outDir, f.getName());
+        try (InputStream is = new java.io.FileInputStream(f); OutputStream os = new FileOutputStream(out)) {
+            copy(is, os);
+        }
+        return out.getPath();
+    }
+
+    private static void copy(InputStream is, OutputStream os) throws java.io.IOException {
+        byte[] buf = new byte[1 << 16];
+        int n;
+        while ((n = is.read(buf)) > 0) os.write(buf, 0, n);
+    }
+
+    // ------------------------------------------------------------ oyun kumandası
+
+    // Tuş -> X11 keysym: A=Ctrl, B=Alt, X=Boşluk, Y=Enter, Start=Enter, Select=Esc, L1=Shift, R1=Tab, L2/R2=PgUp/PgDn
+    private static int padKeysym(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_A: return 0xffe3;
+            case KeyEvent.KEYCODE_BUTTON_B: return 0xffe9;
+            case KeyEvent.KEYCODE_BUTTON_X: return 0x20;
+            case KeyEvent.KEYCODE_BUTTON_Y: return 0xff0d;
+            case KeyEvent.KEYCODE_BUTTON_START: return 0xff0d;
+            case KeyEvent.KEYCODE_BUTTON_SELECT: return 0xff1b;
+            case KeyEvent.KEYCODE_BUTTON_L1: return 0xffe1;
+            case KeyEvent.KEYCODE_BUTTON_R1: return 0xff09;
+            case KeyEvent.KEYCODE_BUTTON_L2: return 0xff55;
+            case KeyEvent.KEYCODE_BUTTON_R2: return 0xff56;
+            case KeyEvent.KEYCODE_BUTTON_THUMBL: return 0xffe1;
+            case KeyEvent.KEYCODE_BUTTON_THUMBR: return 0xffe3;
+            case KeyEvent.KEYCODE_DPAD_UP: return 0xff52;
+            case KeyEvent.KEYCODE_DPAD_DOWN: return 0xff54;
+            case KeyEvent.KEYCODE_DPAD_LEFT: return 0xff51;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return 0xff53;
+            default: return 0;
+        }
+    }
+
+    private static boolean fromPad(int source) {
+        return (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+                || (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+    }
+
+    /** Ekran açıkken kumanda tuşlarını VM'e klavye tuşu olarak gönderir. true = olay tüketildi. */
+    boolean gamepadKey(KeyEvent e) {
+        DisplaySession d = display;
+        if (d == null || !fromPad(e.getSource()) || !padEnabled()) return false;
+        int ks = padKeysym(e.getKeyCode());
+        if (ks == 0) return false;
+        if (e.getRepeatCount() > 0) return true;
+        if (e.getAction() == KeyEvent.ACTION_DOWN) d.rfb().sendKey(ks, true);
+        else if (e.getAction() == KeyEvent.ACTION_UP) d.rfb().sendKey(ks, false);
+        return true;
+    }
+
+    // Yön tuşları / analog çubuk: dört yön için basılı durumu tutulur
+    private final boolean[] padDir = new boolean[4]; // sol, yukarı, sağ, aşağı
+    private static final int[] DIR_KEYSYM = {0xff51, 0xff52, 0xff53, 0xff54};
+    private long padCheckedAt;
+    private boolean padOn = true;
+
+    private boolean padEnabled() {
+        long now = System.currentTimeMillis();
+        if (now - padCheckedAt > 3000) {
+            padCheckedAt = now;
+            padOn = Store.settingBool(ctx, "gamepad", true);
+        }
+        return padOn;
+    }
+
+    boolean gamepadMotion(MotionEvent e) {
+        DisplaySession d = display;
+        if (d == null || !fromPad(e.getSource()) || e.getAction() != MotionEvent.ACTION_MOVE || !padEnabled()) return false;
+        float x = e.getAxisValue(MotionEvent.AXIS_HAT_X);
+        float y = e.getAxisValue(MotionEvent.AXIS_HAT_Y);
+        if (Math.abs(x) < 0.5f) x = e.getAxisValue(MotionEvent.AXIS_X);
+        if (Math.abs(y) < 0.5f) y = e.getAxisValue(MotionEvent.AXIS_Y);
+        boolean[] now = {x < -0.5f, y < -0.5f, x > 0.5f, y > 0.5f};
+        for (int i = 0; i < 4; i++) {
+            if (now[i] != padDir[i]) {
+                padDir[i] = now[i];
+                d.rfb().sendKey(DIR_KEYSYM[i], now[i]);
+            }
+        }
+        return true;
     }
 
     private Object saveScreenshot(DisplaySession d) throws Exception {

@@ -32,6 +32,13 @@ class VmConfig {
   bool savedState;
   bool sharedFolder;
   String firmware;
+  String sound;
+  bool clipboard;
+  bool sharedWritable;
+  String kernelPath;
+  String initrdPath;
+  String kernelArgs;
+  String biosPath;
   int createdAt;
   int lastRunAt;
 
@@ -59,6 +66,13 @@ class VmConfig {
     this.savedState = false,
     this.sharedFolder = false,
     this.firmware = 'bios',
+    this.sound = 'auto',
+    this.clipboard = true,
+    this.sharedWritable = false,
+    this.kernelPath = '',
+    this.initrdPath = '',
+    this.kernelArgs = '',
+    this.biosPath = '',
     this.createdAt = 0,
     this.lastRunAt = 0,
   });
@@ -91,6 +105,13 @@ class VmConfig {
       savedState: b('savedState', false),
       sharedFolder: b('sharedFolder', false),
       firmware: s('firmware', 'bios'),
+      sound: s('sound', 'auto'),
+      clipboard: b('clipboard', true),
+      sharedWritable: b('sharedWritable', false),
+      kernelPath: s('kernelPath', ''),
+      initrdPath: s('initrdPath', ''),
+      kernelArgs: s('kernelArgs', ''),
+      biosPath: s('biosPath', ''),
       createdAt: n('createdAt', 0),
       lastRunAt: n('lastRunAt', 0),
     );
@@ -120,13 +141,40 @@ class VmConfig {
         'savedState': savedState,
         'sharedFolder': sharedFolder,
         'firmware': firmware,
+        'sound': sound,
+        'clipboard': clipboard,
+        'sharedWritable': sharedWritable,
+        'kernelPath': kernelPath,
+        'initrdPath': initrdPath,
+        'kernelArgs': kernelArgs,
+        'biosPath': biosPath,
         'createdAt': createdAt,
         'lastRunAt': lastRunAt,
       };
 
   VmConfig copy() => VmConfig.fromMap(toMap());
 
-  bool get hasMedia => isoPath.isNotEmpty || diskPath.isNotEmpty || floppyPath.isNotEmpty;
+  bool get hasMedia => isoPath.isNotEmpty || diskPath.isNotEmpty || floppyPath.isNotEmpty || kernelPath.isNotEmpty;
+
+  /// Bu VM verilen dosyayı kullanıyor mu (kütüphane temizliği ve "kullanımda" etiketi için)?
+  bool uses(String path) =>
+      path.isNotEmpty &&
+      (isoPath == path || diskPath == path || floppyPath == path || kernelPath == path || initrdPath == path ||
+          biosPath == path);
+
+  /// Yazılabilir paylaşılan klasör (vvfat) anlık görüntü desteklemez.
+  bool get _writableShare => sharedFolder && sharedWritable;
+
+  /// Açılış için eksik bir şey varsa açıklaması (Java QemuArgs.bootProblem ile aynı kural).
+  String? get bootProblem {
+    if (arch != 'm68k' || kernelPath.isNotEmpty) return null;
+    if (machine != 'virt' && biosPath.isNotEmpty) return null;
+    return machine == 'virt'
+        ? t('68k virt makinesi bir Linux çekirdeğiyle açılır: Gelişmiş açılış → Çekirdek.',
+            'The 68k virt machine boots a Linux kernel: Advanced boot → Kernel.')
+        : t('Quadra 800 için Macintosh ROM dosyası (Gelişmiş açılış → BIOS / ROM) ya da bir Linux çekirdeği gerekir.',
+            'Quadra 800 needs a Macintosh ROM file (Advanced boot → BIOS / ROM) or a Linux kernel.');
+  }
 
   String get archLabel => archLabelOf(arch);
 
@@ -135,17 +183,18 @@ class VmConfig {
   bool get qcow2 => diskPath.toLowerCase().endsWith('.qcow2') || diskPath.toLowerCase().endsWith('.qcow');
 
   /// Anlık görüntü: qcow2 disk gerekir.
-  bool get snapshotCapable => qcow2;
+  bool get snapshotCapable => qcow2 && !_writableShare;
 
   /// Bellek dahil durum kaydetme: UEFI değişken dosyası (pflash) olan VM'lerde QEMU izin vermez.
-  bool get saveStateCapable => qcow2 && !usesUefi;
+  bool get saveStateCapable => qcow2 && !usesUefi && !_writableShare;
 
   bool get usesUefi =>
-      arch == 'arm64' || arch == 'arm32' || arch == 'riscv64' || (isX86Arch(arch) && arch != 'x86_16' && firmware == 'uefi');
+      biosPath.isEmpty &&
+      (arch == 'arm64' || arch == 'arm32' || arch == 'riscv64' || (isX86Arch(arch) && arch != 'x86_16' && firmware == 'uefi'));
 }
 
 /// Desteklenen tüm mimariler (sıralı).
-const allArchs = ['x86_16', 'x86_32', 'x86_64', 'arm64', 'arm32', 'ppc', 'ppc64', 'riscv64'];
+const allArchs = ['x86_16', 'x86_32', 'x86_64', 'arm64', 'arm32', 'ppc', 'ppc64', 'riscv64', 'm68k'];
 
 bool isX86Arch(String arch) => arch.startsWith('x86');
 
@@ -154,6 +203,7 @@ String archFamilyOf(String arch) => switch (arch) {
       'arm64' || 'arm32' => 'arm',
       'ppc' || 'ppc64' => 'ppc',
       'riscv64' => 'riscv',
+      'm68k' => 'm68k',
       _ => 'x86',
     };
 
@@ -166,6 +216,7 @@ String archLabelOf(String arch) => switch (arch) {
       'ppc' => 'PowerPC 32',
       'ppc64' => 'PowerPC 64',
       'riscv64' => 'RISC-V 64',
+      'm68k' => '68k',
       _ => arch,
     };
 
@@ -179,6 +230,7 @@ String archLongLabelOf(String arch) => switch (arch) {
       'ppc' => 'PowerPC · 32-bit (PowerMac G4)',
       'ppc64' => 'PowerPC · 64-bit (IBM POWER9)',
       'riscv64' => 'RISC-V · 64-bit',
+      'm68k' => 'Motorola 68k · 32-bit (Macintosh Quadra)',
       _ => arch,
     };
 
@@ -190,6 +242,7 @@ List<Color> archGradient(String arch) => switch (arch) {
       'arm64' || 'arm32' => const [Color(0xFF86EFAC), Color(0xFF16A34A)],
       'ppc' || 'ppc64' => const [Color(0xFFFDBA74), Color(0xFFEA580C)],
       'riscv64' => const [Color(0xFFFDE68A), Color(0xFFD97706)],
+      'm68k' => const [Color(0xFFFDA4AF), Color(0xFFE11D48)],
       _ => const [Color(0xFFDDD6FE), Color(0xFF7C3AED)],
     };
 
@@ -199,12 +252,45 @@ String archMachineLabel(String arch) => switch (arch) {
       'ppc' => 'PowerMac G4 (mac99) · OpenBIOS',
       'ppc64' => 'IBM pSeries (POWER9) · SLOF',
       'riscv64' => 'RISC-V virt · OpenSBI + UEFI',
+      'm68k' => 'Macintosh Quadra 800 · Mac ROM / Linux',
       _ => 'PC',
     };
 
 /// Mimarinin kabul ettiği en fazla RAM ve çekirdek (Java QemuArgs ile aynı).
-int archMaxRam(String arch) => switch (arch) { 'x86_16' => 256, 'ppc' => 2048, 'arm32' => 3072, _ => 65536 };
-int archMaxCpus(String arch) => arch == 'ppc' || arch == 'x86_16' ? 1 : 16;
+int archMaxRam(String arch) => switch (arch) { 'x86_16' => 256, 'm68k' => 1024, 'ppc' => 2048, 'arm32' => 3072, _ => 65536 };
+int archMaxCpus(String arch) => arch == 'ppc' || arch == 'x86_16' || arch == 'm68k' ? 1 : 16;
+
+/// Ses kartı seçenekleri (mimariye göre). "auto" Java tarafında sisteme göre seçilir.
+Map<String, String> soundOptions(VmConfig v) {
+  final auto = t('Otomatik', 'Automatic');
+  final off = t('Kapalı', 'Off');
+  if (v.arch == 'm68k') return {'auto': '$auto (Apple Sound Chip)', 'none': off};
+  final isa = isX86Arch(v.arch) && v.machine == 'isapc';
+  return {
+    'auto': auto,
+    'none': off,
+    if (isX86Arch(v.arch)) 'sb16': 'Sound Blaster 16 + AdLib',
+    if (!isa) ...{
+      'ac97': 'Intel AC97',
+      'es1370': 'Ensoniq ES1370',
+      'hda': 'Intel HD Audio',
+      'virtio': 'VirtIO Sound',
+    },
+  };
+}
+
+/// Ortak pano (virtio-serial + vdagent) bu VM'de kullanılabilir mi? (Java clipboardCapable ile aynı)
+bool clipboardCapable(VmConfig v) {
+  if (v.arch == 'x86_16' || v.arch == 'ppc' || v.arch == 'm68k') return false;
+  if (legacySoundTemplates.contains(v.template)) return false;
+  return !(isX86Arch(v.arch) && v.machine == 'isapc');
+}
+
+/// DOS, Windows 1-3.x ve 9x: Sound Blaster dünyası (Java SB16_TEMPLATES ile aynı).
+const legacySoundTemplates = {
+  'win1', 'win2', 'win31', 'win95', 'win98', 'winme', 'freedos', 'msdos', 'drdos', 'pcdos', 'dos_other', 'other16',
+  'win9x_other',
+};
 
 Color archColor(String arch) => archGradient(arch)[1];
 

@@ -15,7 +15,8 @@ import java.util.List;
 
 /**
  * CI açılış testi: QemuArgs'ın her mimari için ürettiği komut satırını bilgisayardaki gerçek QEMU ile başlatır.
- * Her VM için: 6 sn sonra süreç yaşıyor mu, VNC ekranı açılıyor mu, QMP "running" diyor mu?
+ * Her VM için: 6 sn sonra süreç yaşıyor mu, QMP "running" diyor mu, uygulamanın kendi VNC istemcisi (RfbClient)
+ * görüntü alıyor mu, ses akışı ve genişletilmiş pano QEMU tarafından onaylanıyor mu?
  *
  * Kullanım: java app.strata.vm.QemuArgsSmoke <firmware klasörü> <çalışma klasörü> <test imajları klasörü>
  */
@@ -34,6 +35,8 @@ public class QemuArgsSmoke {
         File shared = new File(work, "shared");
         shared.mkdirs();
         Files.writeString(new File(shared, "HELLO.TXT").toPath(), "merhaba\n");
+        File kernel68k = new File(work, "loop68k.elf");
+        Files.write(kernel68k.toPath(), m68kElf());
 
         List<Object[]> cases = new ArrayList<>();
         cases.add(new Object[]{"x86 16-bit (MS-DOS, disket)", vm("x86_16", v -> {
@@ -42,6 +45,25 @@ public class QemuArgsSmoke {
         })});
         cases.add(new Object[]{"x86 16-bit ISA PC + NE2000", vm("x86_16", v -> {
             v.machine = "isapc"; v.vga = "cirrus"; v.tablet = false; v.net = true; v.ramMb = 16;
+        })});
+        cases.add(new Object[]{"x86 16-bit DOS: Sound Blaster 16 + AdLib + PC hoparlörü", vm("x86_16", v -> {
+            v.template = "freedos"; v.vga = "cirrus"; v.tablet = false; v.net = false; v.ramMb = 32;
+        })});
+        cases.add(new Object[]{"x86 32-bit Windows 98: SB16, pano aygıtı yok", vm("x86_32", v -> {
+            v.template = "win98"; v.vga = "cirrus"; v.nic = "pcnet"; v.tablet = false; v.ramMb = 256;
+        })});
+        cases.add(new Object[]{"x86 64-bit: ES1370 + yazılabilir paylaşılan klasör", vm("x86_64", v -> {
+            v.sound = "es1370"; v.ramMb = 512; v.sharedFolder = true; v.sharedWritable = true;
+        })});
+        cases.add(new Object[]{"x86 64-bit: virtio-sound + doğrudan çekirdek (multiboot)", vm("x86_64", v -> {
+            v.sound = "virtio"; v.ramMb = 512; v.kernelPath = mediaFile("mykernel.elf"); v.kernelArgs = "quiet";
+        })});
+        cases.add(new Object[]{"Motorola 68k Quadra 800 (çekirdek ile)", vm("m68k", v -> {
+            v.machine = "q800"; v.ramMb = 128; v.diskPath = disk.getPath(); v.isoPath = mediaFile("myos32.iso");
+            v.kernelPath = kernel68k.getPath(); v.kernelArgs = "console=ttyS0"; v.sharedFolder = true;
+        })});
+        cases.add(new Object[]{"Motorola 68k virt", vm("m68k", v -> {
+            v.machine = "virt"; v.ramMb = 256; v.diskPath = disk.getPath(); v.kernelPath = kernel68k.getPath();
         })});
         cases.add(new Object[]{"x86 32-bit (Windows XP profili)", vm("x86_32", v -> {
             v.vga = "cirrus"; v.nic = "rtl8139"; v.ramMb = 512; v.cpus = 1; v.diskPath = disk.getPath();
@@ -147,6 +169,8 @@ public class QemuArgsSmoke {
             // QMP durumu
             String status = qmpStatus();
             if (!status.contains("\"running\"")) throw new IllegalStateException("QMP durumu: " + status + "\n" + log);
+            String proto = protocolCheck(v);
+            System.out.println("  " + proto);
             synchronized (log) {
                 if (log.length() > 0) System.out.print(log);
             }
@@ -156,6 +180,59 @@ public class QemuArgsSmoke {
             reader.join(2000);
             Thread.sleep(500);
         }
+    }
+
+    /** Uygulamanın VNC istemcisiyle bağlanır: görüntü, ses onayı, pano yetenekleri. */
+    static String protocolCheck(VmConfig v) throws Exception {
+        final int[] frames = {0};
+        final String[] err = {null};
+        final int[] size = {0, 0};
+        RfbClient c = new RfbClient("127.0.0.1", QemuArgs.VNC_PORT, new RfbClient.Listener() {
+            @Override public void onConnected(int w, int h) { size[0] = w; size[1] = h; }
+            @Override public void onResize(int w, int h) { size[0] = w; size[1] = h; }
+            @Override public void onFrame() { synchronized (frames) { frames[0]++; } }
+            @Override public void onDisconnected(String e) { err[0] = e == null ? "kapandı" : e; }
+        });
+        c.start();
+        try {
+            String snd = QemuArgs.soundFor(v);
+            boolean wantAudio = !snd.equals("none");
+            long end = System.currentTimeMillis() + 10_000;
+            while (System.currentTimeMillis() < end) {
+                if (err[0] != null) throw new IllegalStateException("VNC: " + err[0]);
+                boolean ok;
+                synchronized (frames) { ok = frames[0] > 0; }
+                if (ok && c.clipboardExt && (!wantAudio || c.audioEnabled)) break;
+                Thread.sleep(100);
+            }
+            synchronized (frames) { if (frames[0] == 0) throw new IllegalStateException("VNC görüntüsü gelmedi"); }
+            if (!c.clipboardExt) throw new IllegalStateException("genişletilmiş pano onaylanmadı");
+            if (wantAudio && !c.audioEnabled) throw new IllegalStateException("ses akışı (" + snd + ") onaylanmadı");
+            // Telefondan VM'e pano metni (UTF-8) bağlantıyı bozmamalı
+            c.sendClipboard("Strata çalışıyor ✓");
+            Thread.sleep(700);
+            if (err[0] != null) throw new IllegalStateException("pano sonrası VNC koptu: " + err[0]);
+            int[] dirty;
+            synchronized (c.lock) { dirty = c.takeDirtyLocked(); }
+            return "VNC " + size[0] + "x" + size[1] + ", ses: " + snd + (c.audioEnabled ? " ✓" : "")
+                    + ", pano ✓" + (dirty != null ? ", değişen bölge " + dirty[2] + "x" + dirty[3] : "");
+        } finally {
+            c.stop();
+        }
+    }
+
+    /** Sonsuz döngüde bekleyen en küçük m68k ELF çekirdeği ("bra.s ."). */
+    static byte[] m68kElf() {
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(0x2004).order(java.nio.ByteOrder.BIG_ENDIAN);
+        b.put(new byte[]{0x7f, 'E', 'L', 'F', 1, 2, 1, 0}).put(new byte[8]);
+        b.putShort((short) 2).putShort((short) 4).putInt(1).putInt(0x2000) // EXEC, EM_68K, sürüm, giriş
+                .putInt(52).putInt(0).putInt(0)                                 // phoff, shoff, flags
+                .putShort((short) 52).putShort((short) 32).putShort((short) 1)  // ehsize, phentsize, phnum
+                .putShort((short) 0).putShort((short) 0).putShort((short) 0);
+        b.putInt(1).putInt(0x2000).putInt(0x2000).putInt(0x2000).putInt(4).putInt(4).putInt(5).putInt(2); // PT_LOAD
+        b.position(0x2000);
+        b.put(new byte[]{0x60, (byte) 0xFE, 0x4E, 0x71});
+        return b.array();
     }
 
     static String qmpStatus() throws Exception {

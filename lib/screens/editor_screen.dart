@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../backend.dart';
+import '../inspector.dart' show extractKernelFromIso;
 import '../models.dart';
 import '../state.dart';
 import '../widgets/common.dart';
@@ -40,6 +42,7 @@ class _EditorScreenState extends State<EditorScreen> {
   late final TextEditingController _cpu;
   late final TextEditingController _extra;
   late final TextEditingController _ports;
+  late final TextEditingController _append;
   bool _busy = false;
 
   @override
@@ -51,6 +54,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _cpu = TextEditingController(text: v.cpuModel);
     _extra = TextEditingController(text: v.extraArgs);
     _ports = TextEditingController(text: v.portForwards);
+    _append = TextEditingController(text: v.kernelArgs);
   }
 
   @override
@@ -59,6 +63,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _cpu.dispose();
     _extra.dispose();
     _ports.dispose();
+    _append.dispose();
     super.dispose();
   }
 
@@ -100,6 +105,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _setArchInner(String arch) {
     v.arch = arch;
+    if (arch == 'm68k') {
+      if (v.machine != 'virt') v.machine = 'q800';
+      v.sound = 'auto';
+    } else if (!const {'pc', 'q35', 'isapc'}.contains(v.machine)) {
+      v.machine = 'pc';
+    }
     v.cpuModel = '';
     _cpu.text = '';
     if (!isX86Arch(arch)) {
@@ -180,6 +191,40 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  /// Çekirdek / initrd / ROM gibi tek dosyalar: kütüphaneden ya da telefondan.
+  Future<String?> _pickAny() async {
+    try {
+      return await chooseMedia(context, 'any', vmId: v.id.isEmpty ? null : v.id);
+    } catch (e) {
+      if (mounted) toast(context, '${t('Dosya alınamadı', 'Could not import file')}: $e');
+      return null;
+    }
+  }
+
+  /// Debian m68k gibi kurulum CD'lerinden çekirdek ve initrd'yi çıkarır.
+  Future<void> _kernelFromCd() async {
+    if (v.isoPath.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final dir = File(v.isoPath).parent.path;
+      final (k, i) = await extractKernelFromIso(v.isoPath, dir, arch: v.arch == 'm68k' ? 'm68k' : null);
+      if (!mounted) return;
+      if (k == null) {
+        toast(context, t('CD\'de çekirdek bulunamadı', 'No kernel found on the CD'));
+      } else {
+        setState(() {
+          v.kernelPath = k;
+          if (i != null) v.initrdPath = i;
+        });
+        toast(context, '${t('Çekirdek', 'Kernel')}: ${baseName(k)}${i != null ? ' + ${baseName(i)}' : ''}');
+      }
+    } catch (e) {
+      if (mounted) toast(context, '${t('Çekirdek çıkarılamadı', 'Could not extract the kernel')}: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _createDisk() async {
     var idx = _diskSteps.indexOf(v.os.diskMb);
     if (idx < 0) idx = 7;
@@ -239,6 +284,7 @@ class _EditorScreenState extends State<EditorScreen> {
     v.cpuModel = _cpu.text.trim();
     v.extraArgs = _extra.text.trim();
     v.portForwards = _ports.text.trim();
+    v.kernelArgs = _append.text.trim();
     await app.save(v);
     if (mounted) Navigator.pop(context);
   }
@@ -415,6 +461,18 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
               null,
             ),
+            if (v.arch == 'm68k') ...[
+              const SizedBox(height: 6),
+              _dropdown<String>(
+                t('Anakart', 'Machine'),
+                v.machine == 'virt' ? 'virt' : 'q800',
+                {
+                  'q800': 'Macintosh Quadra 800',
+                  'virt': t('68k virt (yalnızca Linux)', '68k virt (Linux only)'),
+                },
+                (x) => setState(() => v.machine = x),
+              ),
+            ],
             if (x86) ...[
             const SizedBox(height: 6),
             Row(children: [
@@ -493,6 +551,16 @@ class _EditorScreenState extends State<EditorScreen> {
               subtitle: Text(t('Telefondan eklenen dosyalar VM\'de FAT sürücü olarak görünür (Ayrıntılar ekranından dosya ekle)',
                   'Files added from the phone appear as a FAT drive in the VM (add files from the Details screen)')),
             ),
+            if (v.sharedFolder)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: v.sharedWritable,
+                onChanged: (x) => setState(() => v.sharedWritable = x),
+                title: Text(t('VM klasöre yazabilsin', 'Let the VM write to the folder')),
+                subtitle: Text(t(
+                    'VM\'nin kaydettiği dosyalar telefona geçer (Ayrıntılar → İndirilenler\'e aktar). Açıkken anlık görüntü ve durum kaydı kullanılamaz.',
+                    'Files the VM saves come back to the phone (Details → export to Downloads). While on, snapshots and saved state are unavailable.')),
+              ),
             const SizedBox(height: 10),
             Text(t('Önyükleme sırası', 'Boot from'), style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
             const SizedBox(height: 8),
@@ -507,6 +575,119 @@ class _EditorScreenState extends State<EditorScreen> {
               onSelectionChanged: (s) => setState(() => v.boot = s.first),
             ),
           ]),
+          const SizedBox(height: 12),
+
+          // ---------------------------------------------------- ses ve pano
+          SectionCard(title: t('Ses ve pano', 'Sound & clipboard'), icon: Icons.volume_up_rounded, children: [
+            _dropdown<String>(
+              t('Ses kartı', 'Sound card'),
+              soundOptions(v).containsKey(v.sound) ? v.sound : 'auto',
+              soundOptions(v),
+              (x) => setState(() => v.sound = x),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              t('Ses telefonun hoparlöründen çalar. Otomatik: DOS/Win9x için Sound Blaster 16, XP için AC97, yeni sistemler için HD Audio.',
+                  'Sound plays through the phone speaker. Automatic: Sound Blaster 16 for DOS/Win9x, AC97 for XP, HD Audio for newer systems.'),
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            if (clipboardCapable(v))
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: v.clipboard,
+                onChanged: (x) => setState(() => v.clipboard = x),
+                title: Text(t('Ortak pano', 'Shared clipboard')),
+                subtitle: Text(t('Misafirde spice-vdagent gerekir (Linux: spice-vdagent paketi, Windows: spice-guest-tools)',
+                    'Needs spice-vdagent in the guest (Linux: spice-vdagent package, Windows: spice-guest-tools)')),
+              ),
+          ]),
+          const SizedBox(height: 12),
+
+          // ---------------------------------------------------- gelişmiş açılış
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              initiallyExpanded: v.arch == 'm68k' || v.kernelPath.isNotEmpty || v.biosPath.isNotEmpty,
+              leading: Icon(Icons.rocket_launch_outlined, color: cs.primary),
+              title: Text(t('Gelişmiş açılış', 'Advanced boot'), style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(t('Çekirdek, initrd, BIOS / ROM', 'Kernel, initrd, BIOS / ROM'),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              shape: const Border(),
+              children: [
+                if (v.bootProblem != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: cs.errorContainer, borderRadius: BorderRadius.circular(12)),
+                      child: Text(v.bootProblem!, style: TextStyle(color: cs.onErrorContainer)),
+                    ),
+                  ),
+                Text(
+                  t('İşletim sistemini disk yerine doğrudan bir çekirdekle başlatır (Linux, Multiboot ile kendi yazdığın sistemler).',
+                      'Starts the system directly from a kernel instead of a disk (Linux, your own Multiboot systems).'),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 10),
+                _mediaTile(
+                  Icons.memory_rounded,
+                  t('Çekirdek', 'Kernel'),
+                  v.kernelPath,
+                  [
+                    _act(t('Seç', 'Choose'), () async {
+                      final p = await _pickAny();
+                      if (p != null && mounted) setState(() => v.kernelPath = p);
+                    }),
+                    if (v.isoPath.isNotEmpty) _act(t('CD\'den al', 'Get from CD'), _kernelFromCd),
+                  ],
+                  () => setState(() => v.kernelPath = ''),
+                ),
+                _mediaTile(
+                  Icons.inventory_2_outlined,
+                  'initrd',
+                  v.initrdPath,
+                  [
+                    _act(t('Seç', 'Choose'), () async {
+                      final p = await _pickAny();
+                      if (p != null && mounted) setState(() => v.initrdPath = p);
+                    }),
+                  ],
+                  () => setState(() => v.initrdPath = ''),
+                ),
+                TextField(
+                  controller: _append,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: t('Çekirdek parametreleri', 'Kernel parameters'),
+                    hintText: 'console=tty0 root=/dev/sda1',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _mediaTile(
+                  Icons.developer_board_rounded,
+                  t('BIOS / ROM dosyası', 'BIOS / ROM file'),
+                  v.biosPath,
+                  [
+                    _act(t('Seç', 'Choose'), () async {
+                      final p = await _pickAny();
+                      if (p != null && mounted) setState(() => v.biosPath = p);
+                    }),
+                  ],
+                  () => setState(() => v.biosPath = ''),
+                ),
+                Text(
+                  v.arch == 'm68k'
+                      ? t('Quadra 800 ROM\'u (1 MB) kendi Macintosh\'undan alınmalıdır; uygulamayla gelmez.',
+                          'The Quadra 800 ROM (1 MB) must be dumped from your own Macintosh; it is not included.')
+                      : t('Boş = yerleşik firmware (SeaBIOS, OVMF, OpenBIOS...).',
+                          'Empty = built-in firmware (SeaBIOS, OVMF, OpenBIOS...).'),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
 
           // ---------------------------------------------------- ağ

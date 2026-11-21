@@ -49,6 +49,24 @@ make_kernel myos64 "mov ecx, 0xC0000080
   or eax, 0x100
   wrmsr"
 
+# Doğrudan çekirdek açılışı (-kernel) için Multiboot 1 çekirdeği (QEMU'nun kendi yükleyicisi)
+cat > "$WORK/mb1.asm" <<'ASM'
+bits 32
+section .text
+align 4
+  dd 0x1BADB002
+  dd 0
+  dd -0x1BADB002
+global _start
+_start:
+  cli
+.h:
+  hlt
+  jmp .h
+ASM
+nasm -f elf32 "$WORK/mb1.asm" -o "$WORK/mb1.o"
+ld -m elf_i386 -e _start -Ttext 0x100000 -o "$OUT/mykernel.elf" "$WORK/mb1.o"
+
 # --- 2) Ham önyükleme disketleri (kendi önyükleyicisi olan sistemler)
 cat > "$WORK/boot16.asm" <<'ASM'
 org 0x7c00

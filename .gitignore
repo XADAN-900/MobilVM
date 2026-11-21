@@ -20,3 +20,4 @@ android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 android/app/src/main/jniLibs/arm64-v8a/*.so
 android/app/src/main/assets/qemu-runtime.zip
 android/app/src/main/assets/qemu-runtime.json
+__pycache__/

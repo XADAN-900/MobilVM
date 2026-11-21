@@ -79,7 +79,7 @@ final class QemuEnv {
     /** APK'da motoru bulunan mimariler. */
     static java.util.List<String> availableArchs(Context c) {
         java.util.List<String> out = new java.util.ArrayList<>();
-        for (String a : new String[]{"x86_16", "x86_32", "x86_64", "arm64", "arm32", "ppc", "ppc64", "riscv64"}) {
+        for (String a : new String[]{"x86_16", "x86_32", "x86_64", "arm64", "arm32", "ppc", "ppc64", "riscv64", "m68k"}) {
             if (systemBinary(c, a) != null) out.add(a);
         }
         return out;

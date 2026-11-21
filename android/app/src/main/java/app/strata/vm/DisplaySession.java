@@ -10,6 +10,7 @@ import io.flutter.view.TextureRegistry;
 /**
  * VNC çerçevelerini bir Flutter Texture'ına çizer.
  * RfbClient piksel tamponunu doldurur, ayrı bir çizim iş parçacığı (≤60 fps) Surface'a basar.
+ * Yalnızca değişen bölge kopyalanır; ses AudioPlayer'a, misafir panosu Flutter'a iletilir.
  */
 final class DisplaySession implements RfbClient.Listener {
     private final TextureRegistry.SurfaceTextureEntry entry;
@@ -25,13 +26,20 @@ final class DisplaySession implements RfbClient.Listener {
     private volatile boolean alive = true;
     private boolean hardwareCanvas = true;
     private Bitmap bitmap;
+    private final AudioPlayer audio;
 
-    DisplaySession(TextureRegistry registry) {
+    DisplaySession(TextureRegistry registry, boolean soundOn, boolean muted) {
         entry = registry.createSurfaceTexture();
         surfaceTexture = entry.surfaceTexture();
         surfaceTexture.setDefaultBufferSize(640, 480);
         surface = new Surface(surfaceTexture);
         rfb = new RfbClient("127.0.0.1", QemuCommand.VNC_PORT, this);
+        rfb.audioWanted = soundOn;
+        audio = soundOn ? new AudioPlayer() : null;
+        if (audio != null) {
+            audio.setMuted(muted);
+            try { audio.start(); } catch (Exception e) { Events.emit(Events.of("type", "log", "line", "audio: " + e)); }
+        }
         renderThread = new Thread(this::renderLoop, "display-render");
         renderThread.start();
         rfb.start();
@@ -61,6 +69,21 @@ final class DisplaySession implements RfbClient.Listener {
             dirty = true;
             signal.notifyAll();
         }
+    }
+
+    @Override
+    public void onAudio(byte[] pcm) {
+        if (audio != null) audio.write(pcm);
+    }
+
+    @Override
+    public void onClipboard(String text) {
+        if (text == null || text.isEmpty()) return;
+        Events.emit(Events.of("type", "clipboard", "text", text));
+    }
+
+    void setMuted(boolean m) {
+        if (audio != null) audio.setMuted(m);
     }
 
     @Override
@@ -108,8 +131,12 @@ final class DisplaySession implements RfbClient.Listener {
             Bitmap bmp = bitmap;
             if (bmp == null) continue;
             synchronized (rfb.lock) {
-                if (rfb.width != bmp.getWidth() || rfb.height != bmp.getHeight()) continue;
-                bmp.setPixels(rfb.pixels, 0, bmp.getWidth(), 0, 0, bmp.getWidth(), bmp.getHeight());
+                int bw = bmp.getWidth();
+                if (rfb.width != bw || rfb.height != bmp.getHeight()) continue;
+                // Yeni bitmap tamamen, sonrakiler yalnızca değişen dikdörtgen kadar kopyalanır
+                int[] d = resized ? new int[]{0, 0, bw, bmp.getHeight()} : rfb.takeDirtyLocked();
+                if (resized) rfb.takeDirtyLocked();
+                if (d != null) bmp.setPixels(rfb.pixels, d[1] * bw + d[0], bw, d[0], d[1], d[2], d[3]);
             }
             draw(bmp);
             lastFrame = System.currentTimeMillis();
@@ -145,6 +172,7 @@ final class DisplaySession implements RfbClient.Listener {
         alive = false;
         synchronized (signal) { signal.notifyAll(); }
         rfb.stop();
+        if (audio != null) audio.stop();
         try { renderThread.join(500); } catch (InterruptedException ignored) { }
         surface.release();
         entry.release();

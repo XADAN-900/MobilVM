@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../backend.dart';
+import '../inspector.dart' show extractKernelFromIso;
 import '../models.dart';
 import '../state.dart';
 import '../widgets/common.dart';
@@ -234,6 +236,14 @@ class _WizardScreenState extends State<WizardScreen> {
         _vm.diskPath = '';
       }
       _fixBoot();
+      // 68k Linux kurulum CD'si: çekirdek ve initrd'yi CD'den çıkar (doğrudan çekirdek açılışı)
+      if (_vm.arch == 'm68k' && _vm.kernelPath.isEmpty && _vm.isoPath.isNotEmpty && _vm.os.family == 'linux') {
+        try {
+          final (k, i) = await extractKernelFromIso(_vm.isoPath, File(_vm.isoPath).parent.path, arch: 'm68k');
+          if (k != null) _vm.kernelPath = k;
+          if (i != null) _vm.initrdPath = i;
+        } catch (_) {}
+      }
       final saved = await app.save(_vm);
       if (!mounted) return;
       Navigator.pop(context, saved);
@@ -658,6 +668,11 @@ class _WizardScreenState extends State<WizardScreen> {
               row(t('Anakart', 'Machine'), archMachineLabel(_vm.arch)),
             row(t('Ağ', 'Network'), _vm.net ? 'NAT · ${_vm.nic}' : t('Kapalı', 'Off')),
             row('CD / DVD', _vm.isoPath.isEmpty ? '—' : baseName(_vm.isoPath)),
+            if (_vm.bootProblem != null && !(_vm.os.family == 'linux' && _vm.isoPath.isNotEmpty))
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(_vm.bootProblem!, style: TextStyle(color: cs.error, fontSize: 12.5)),
+              ),
             row(t('Disket', 'Floppy'), _vm.floppyPath.isEmpty ? '—' : baseName(_vm.floppyPath)),
             row(
               t('Disk', 'Disk'),

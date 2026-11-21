@@ -43,15 +43,9 @@ BINARIES = [
     (["qemu-system-aarch64-headless", "qemu-system-aarch64"], "qemu-system-aarch64", "libqemu-system-aarch64.so"),
     (["qemu-system-ppc64-headless", "qemu-system-ppc64"], "qemu-system-ppc64", "libqemu-system-ppc64.so"),
     (["qemu-system-riscv64-headless", "qemu-system-riscv64"], "qemu-system-riscv64", "libqemu-system-riscv64.so"),
-    # Retro / sunucu mimarileri
-    (["qemu-system-sparc64-headless", "qemu-system-sparc64"], "qemu-system-sparc64", "libqemu-system-sparc64.so"),
-    (["qemu-system-sparc-headless", "qemu-system-sparc"], "qemu-system-sparc", "libqemu-system-sparc.so"),
-    (["qemu-system-mips64el-headless", "qemu-system-mips64el"], "qemu-system-mips64el", "libqemu-system-mips64el.so"),
+    # 68k: Macintosh Quadra 800 ve m68k Linux. (SPARC, MIPS, s390x, PA-RISC, Alpha, LoongArch
+    # motorlarını Termux yayınlamıyor; onlar için QEMU'yu kendimiz derlememiz gerekir.)
     (["qemu-system-m68k-headless", "qemu-system-m68k"], "qemu-system-m68k", "libqemu-system-m68k.so"),
-    (["qemu-system-s390x-headless", "qemu-system-s390x"], "qemu-system-s390x", "libqemu-system-s390x.so"),
-    (["qemu-system-hppa-headless", "qemu-system-hppa"], "qemu-system-hppa", "libqemu-system-hppa.so"),
-    (["qemu-system-alpha-headless", "qemu-system-alpha"], "qemu-system-alpha", "libqemu-system-alpha.so"),
-    (["qemu-system-loongarch64-headless", "qemu-system-loongarch64"], "qemu-system-loongarch64", "libqemu-system-loongarch64.so"),
 ]
 
 # Çalışma zamanında gereksiz olan bağımlılıklar
@@ -274,7 +268,7 @@ def collect(staging, links):
         names = set(z.namelist())
     # Uygulamanın kullandığı donanımlar için gereken firmware / klavye dosyaları
     required = ["bios-256k.bin", "vgabios-cirrus.bin", "vgabios-stdvga.bin", "vgabios-vmware.bin",
-                "vgabios-virtio.bin", "kvmvapic.bin", "linuxboot_dma.bin",
+                "vgabios-virtio.bin", "kvmvapic.bin", "linuxboot_dma.bin", "multiboot_dma.bin",
                 "edk2-x86_64-code.fd", "edk2-i386-code.fd", "edk2-i386-vars.fd",
                 # ARM, PowerPC, RISC-V
                 "edk2-aarch64-code.fd", "edk2-arm-code.fd", "edk2-arm-vars.fd",

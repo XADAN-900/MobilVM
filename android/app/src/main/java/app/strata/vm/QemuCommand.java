@@ -26,6 +26,7 @@ final class QemuCommand {
         env.sharedDir = vm.sharedFolder ? QemuEnv.sharedDir(c, vm.id).getPath() : null;
         env.tbSize = Store.settingInt(c, "tbSize", 256);
         env.mttcg = Store.settingBool(c, "mttcg", true);
+        env.audio = Store.settingBool(c, "sound", true);
 
         // UEFI: kod salt okunur, değişkenler VM'e (ve mimariye) özel kopyada
         String[] uefi = QemuArgs.uefiFiles(vm);

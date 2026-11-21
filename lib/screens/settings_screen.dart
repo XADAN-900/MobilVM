@@ -107,6 +107,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ]),
               const SizedBox(height: 12),
+              SectionCard(title: t('Ses ve oyun kumandası', 'Sound & gamepad'), icon: Icons.sports_esports_rounded, children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: s['sound'] != false,
+                  onChanged: (v) => app.setSetting('sound', v),
+                  title: Text(t('VM sesi', 'VM sound')),
+                  subtitle: Text(t('Sanal ses kartı telefonun hoparlöründen çalar (bir sonraki açılışta)',
+                      'The virtual sound card plays through the phone speaker (from the next start)')),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: s['gamepad'] != false,
+                  onChanged: (v) => app.setSetting('gamepad', v),
+                  title: Text(t('Oyun kumandası', 'Gamepad')),
+                  subtitle: Text(t('Yön tuşları = oklar, A = Ctrl, B = Alt, X = Boşluk, Y/Start = Enter, Select = Esc, L1 = Shift, R1 = Tab',
+                      'D-pad = arrows, A = Ctrl, B = Alt, X = Space, Y/Start = Enter, Select = Esc, L1 = Shift, R1 = Tab')),
+                ),
+              ]),
+              const SizedBox(height: 12),
               SectionCard(title: t('Performans', 'Performance'), icon: Icons.speed_rounded, children: [
                 _seg<int>(
                     t('Kod çeviri önbelleği', 'Translation cache'),

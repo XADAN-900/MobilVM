@@ -49,6 +49,8 @@ class _DisplayScreenState extends State<DisplayScreen> {
   Timer? _statsTimer;
   Map<String, dynamic> _stats = {};
   bool _savingState = false;
+  bool _muted = app.settings['muted'] == true;
+  String _lastGuestClip = '';
   final Set<int> _sticky = {};
   final Map<PhysicalKeyboardKey, int> _pressed = {};
   late final FocusNode _hwFocus = FocusNode(onKeyEvent: _onKey);
@@ -71,7 +73,8 @@ class _DisplayScreenState extends State<DisplayScreen> {
     super.initState();
     // PS/2 fare (USB tablet kapalı) göreli çalışır: touchpad modu daha doğal
     _mode = app.settings['mouseMode'] == 'trackpad' ||
-            (isX86Arch(widget.vm.arch) && (!widget.vm.tablet || widget.vm.machine == 'isapc'))
+            (isX86Arch(widget.vm.arch) && (!widget.vm.tablet || widget.vm.machine == 'isapc')) ||
+            (widget.vm.arch == 'm68k' && widget.vm.machine != 'virt')
         ? MouseMode.trackpad
         : MouseMode.touch;
     app.displayOpen = true;
@@ -156,6 +159,13 @@ class _DisplayScreenState extends State<DisplayScreen> {
           }
           break;
       }
+    } else if (e['type'] == 'clipboard') {
+      // Misafir bir metin kopyaladı: telefon panosuna al
+      final text = (e['text'] as String?) ?? '';
+      if (text.isEmpty || text == _lastGuestClip) return;
+      _lastGuestClip = text;
+      Clipboard.setData(ClipboardData(text: text));
+      toast(context, t('VM\'den panoya kopyalandı', 'Copied from the VM to the clipboard'));
     } else if (e['type'] == 'vm' && e['running'] == false && e['vmId'] == widget.vm.id) {
       _onVmEnded((e['exitCode'] as num?)?.toInt() ?? 0);
     }
@@ -534,6 +544,21 @@ class _DisplayScreenState extends State<DisplayScreen> {
       case 'paste':
         await _pasteText();
         break;
+      case 'clip':
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final text = data?.text ?? '';
+        if (text.isEmpty) {
+          if (mounted) toast(context, t('Pano boş', 'The clipboard is empty'));
+          break;
+        }
+        _lastGuestClip = text;
+        final ok = await Backend.call<bool>('clipboardSend', {'text': text}).catchError((_) => false);
+        if (mounted) {
+          toast(context, ok == true
+              ? t('Pano VM\'e gönderildi (misafirde Ctrl+V)', 'Clipboard sent to the VM (Ctrl+V in the guest)')
+              : t('Gönderilemedi', 'Could not send'));
+        }
+        break;
       case 'rotate':
         setState(() => _landscape = !_landscape);
         await SystemChrome.setPreferredOrientations(_landscape
@@ -812,6 +837,13 @@ class _DisplayScreenState extends State<DisplayScreen> {
                     _zoom = 1;
                     _pan = Offset.zero;
                   })),
+              if (app.settings['sound'] != false)
+                btn(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                    _muted ? t('Sesi aç', 'Unmute') : t('Sessiz', 'Mute'), () {
+                  setState(() => _muted = !_muted);
+                  app.settings['muted'] = _muted;
+                  Backend.fire('setMuted', {'muted': _muted});
+                }, active: _muted),
               btn(_paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
                   _paused ? t('Devam et', 'Resume') : t('Duraklat', 'Pause'), () async {
                 await _qmp(_paused ? 'cont' : 'stop');
@@ -827,6 +859,8 @@ class _DisplayScreenState extends State<DisplayScreen> {
                   _mi('cd', Icons.album_outlined, t('CD değiştir', 'Change CD')),
                   _mi('eject', Icons.eject_outlined, t('CD\'yi çıkar', 'Eject CD')),
                   _mi('paste', Icons.content_paste_rounded, t('Panodan yaz', 'Type clipboard')),
+                  if (widget.vm.clipboard && clipboardCapable(widget.vm))
+                    _mi('clip', Icons.content_paste_go_rounded, t('Panoyu VM\'e gönder', 'Send clipboard to VM')),
                   _mi('rotate', Icons.screen_rotation_rounded,
                       _landscape ? t('Yatay kilidi kaldır', 'Unlock rotation') : t('Yatay ekrana kilitle', 'Lock landscape')),
                   _mi('log', Icons.receipt_long_outlined, t('Günlük', 'Log')),
@@ -852,7 +886,11 @@ class _DisplayScreenState extends State<DisplayScreen> {
 
   PopupMenuItem<String> _mi(String v, IconData i, String label) => PopupMenuItem(
         value: v,
-        child: Row(children: [Icon(i, size: 20), const SizedBox(width: 12), Text(label)]),
+        child: Row(children: [
+          Icon(i, size: 20),
+          const SizedBox(width: 12),
+          Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+        ]),
       );
 
   Widget _keyBarWidget() {

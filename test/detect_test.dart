@@ -42,6 +42,89 @@ void main() {
     expect(detectOs('debian-12.7.0-amd64-netinst')?.id, 'debian');
   });
 
+  test('yeni sistemler ve 68k adla algılanır', () {
+    final cases = {
+      'en_windows_server_2019_x64_dvd': 'win2019',
+      'Windows Server 2003 R2 Enterprise': 'win2003',
+      'SW_DVD9_Win_Server_STD_CORE_2022': 'win2022',
+      'Windows NT 4.0 Workstation': 'winnt4',
+      'Windows XP Professional x64 Edition': 'winxp64',
+      'Windows XP Professional SP3': 'winxp',
+      'Windows 2.03': 'win2',
+      'Windows 1.01': 'win1',
+      'Windows 3.11': 'win31',
+      'DR-DOS 7.03': 'drdos',
+      'PC-DOS 2000': 'pcdos',
+      'OS2 Warp 4': 'os2',
+      'ArcaOS-5.1.0': 'arcaos',
+      'BeOS R5 Personal': 'beos',
+      'haiku-r1beta5-x86_64-anyboot': 'haiku',
+      'sol-11_4-text-x86': 'solaris',
+      'OI-hipster-text-20240426': 'openindiana',
+      'minix_R3.3.0-588a35b': 'minix',
+      '9front-10522.amd64': 'plan9',
+      'TempleOS': 'templeos',
+      'serenity-x86_64': 'serenity',
+      'redox_demo_x86_64_2024-05-01_1048_livedisk': 'redox',
+      'android-x86_64-9.0-r2': 'android_x86',
+      'Bliss-v16.9.7-x86_64-OFFICIAL-gapps': 'android_x86',
+      'chromeos_15917.71.0_reven_recovery': 'chromeos',
+      'Pardus-23.1-XFCE-amd64': 'pardus',
+      'kali-linux-2024.3-installer-amd64': 'kali',
+      'manjaro-kde-24.1.1-241011-linux610': 'manjaro',
+      'openSUSE-Leap-15.6-DVD-x86_64': 'opensuse',
+      'Rocky-9.4-x86_64-minimal': 'rhel',
+      'slackware64-15.0-install-dvd': 'slackware',
+      'fossapup64-9.5': 'puppy',
+      'dsl-2024.rc7': 'dsl',
+      'FreeBSD-14.1-RELEASE-i386-disc1': 'freebsd32',
+      'FreeBSD-14.1-RELEASE-amd64-disc1': 'freebsd',
+      'DragonFly-x86_64-20240520-DEV': 'dragonfly',
+      'debian-12.0.0-m68k-NETINST-1': 'debian_m68k',
+      'mystery-m68k': 'other_m68k',
+      'System 7.5.3': 'macos7',
+      'Mac OS 8.1 CD': 'macos8_68k',
+      'Mac OS 9.2.2 Install': 'macos9',
+      'archlinux-2024.11.01-x86_64': 'arch',
+      'debian-12.7.0-amd64-netinst': 'debian',
+    };
+    for (final e in cases.entries) {
+      expect(detectOs(e.key)?.id, e.value, reason: e.key);
+    }
+    // Her yeni tür varsayılan donanımla oluşturulabilmeli
+    for (final os in osCatalog) {
+      final v = os.create();
+      expect(v.arch, os.arch, reason: os.id);
+      expect(v.ramMb, lessThanOrEqualTo(archMaxRam(v.arch)), reason: os.id);
+      expect(v.cpus, lessThanOrEqualTo(archMaxCpus(v.arch)), reason: os.id);
+      expect(soundOptions(v).containsKey(v.sound), isTrue, reason: os.id);
+      if (v.arch == 'm68k') expect(v.machine, 'q800', reason: os.id);
+    }
+    expect(osCatalog.map((o) => o.id).toSet().length, osCatalog.length);
+  });
+
+  test('68k açılış kuralı ve ses seçenekleri', () {
+    final mac = osById('macos7').create();
+    expect(mac.bootProblem, isNotNull);
+    mac.biosPath = '/x/quadra800.rom';
+    expect(mac.bootProblem, isNull);
+    final virt = osById('linux_m68k').create()..machine = 'virt';
+    expect(virt.bootProblem, isNotNull);
+    virt.kernelPath = '/x/vmlinux';
+    expect(virt.bootProblem, isNull);
+    expect(soundOptions(osById('freedos').create()).containsKey('sb16'), isTrue);
+    expect(soundOptions(osById('debian_arm64').create()).containsKey('sb16'), isFalse);
+    expect(clipboardCapable(osById('win98').create()), isFalse);
+    expect(clipboardCapable(osById('ubuntu').create()), isTrue);
+    expect(osById('win98').create().clipboard, isFalse);
+    final w = osById('debian').create()
+      ..diskPath = '/x/d.qcow2'
+      ..sharedFolder = true
+      ..sharedWritable = true;
+    expect(w.saveStateCapable, isFalse);
+    expect(w.snapshotCapable, isFalse);
+  });
+
   test('ARM64 Linux Image + BOOTAA64.EFI (anlamsız ad ve etiket)', () async {
     final d = await det('mystery-arm.iso');
     expect(d, isNotNull);

@@ -22,7 +22,7 @@ const osFamilies = <OsFamily>[
   OsFamily('windows', 'Microsoft Windows', 'Microsoft Windows', Icons.desktop_windows_rounded),
   OsFamily('linux', 'Linux', 'Linux', Icons.terminal_rounded),
   OsFamily('dos', 'DOS', 'DOS', Icons.keyboard_rounded),
-  OsFamily('macos', 'Mac OS (PowerPC)', 'Mac OS (PowerPC)', Icons.laptop_mac_rounded),
+  OsFamily('macos', 'Klasik Mac OS (68k / PowerPC)', 'Classic Mac OS (68k / PowerPC)', Icons.laptop_mac_rounded),
   OsFamily('bsd', 'BSD', 'BSD', Icons.dns_rounded),
   OsFamily('other', 'Diğer', 'Other', Icons.category_rounded),
 ];
@@ -48,6 +48,7 @@ class OsType {
   final bool net;
   final bool tablet;
   final bool heavy;
+  final bool uefi;
   final String tipTr;
   final String tipEn;
 
@@ -69,6 +70,7 @@ class OsType {
     this.net = true,
     this.tablet = true,
     this.heavy = false,
+    this.uefi = false,
     this.tipTr = '',
     this.tipEn = '',
   });
@@ -98,7 +100,17 @@ class OsType {
     ..nic = nic
     ..boot = boot
     ..tablet = tablet
-    ..firmware = id == 'win11' ? 'uefi' : 'bios';
+    ..sound = 'auto'
+    ..clipboard = clipboardDefault
+    ..firmware = id == 'win11' || uefi ? 'uefi' : 'bios';
+
+  /// Pano aygıtı (virtio-serial) eski sistemlerde "bilinmeyen aygıt" sorar; onlarda kapalı başlar.
+  bool get clipboardDefault =>
+      family != 'dos' &&
+      family != 'macos' &&
+      !legacySoundTemplates.contains(id) &&
+      !const {'win2k', 'winxp', 'winnt4', 'win2003', 'winxp64', 'os2', 'arcaos', 'beos', 'templeos', 'menuetos', 'kolibri', 'reactos'}
+          .contains(id);
 }
 
 const osCatalog = <OsType>[
@@ -107,6 +119,12 @@ const osCatalog = <OsType>[
       vga: 'cirrus', ram: 32, diskMb: 256, net: false, tablet: false,
       tipTr: 'Önce MS-DOS kur, sonra Windows 3.1 disketlerini çalıştır',
       tipEn: 'Install MS-DOS first, then run the Windows 3.1 floppies'),
+  OsType(id: 'win1', family: 'windows', name: 'Windows 1.0', badge: '1.0', arch: 'x86_16', cpu: '486',
+      vga: 'cirrus', ram: 16, diskMb: 128, boot: 'floppy', net: false, tablet: false,
+      tipTr: 'Önce DOS kur, sonra Windows disketlerini çalıştır', tipEn: 'Install DOS first, then run the Windows floppies'),
+  OsType(id: 'win2', family: 'windows', name: 'Windows 2.x / 386', badge: '2.0', arch: 'x86_16', cpu: '486',
+      vga: 'cirrus', ram: 16, diskMb: 128, boot: 'floppy', net: false, tablet: false,
+      tipTr: 'Önce DOS kur, sonra Windows disketlerini çalıştır', tipEn: 'Install DOS first, then run the Windows floppies'),
   OsType(id: 'win95', family: 'windows', name: 'Windows 95', badge: '95', arch: 'x86_32', cpu: 'pentium',
       vga: 'cirrus', nic: 'ne2k_pci', ram: 64, diskMb: 1024, tablet: false,
       tipTr: 'Touchpad fare modu önerilir', tipEn: 'Trackpad mouse mode recommended'),
@@ -115,13 +133,22 @@ const osCatalog = <OsType>[
       tipTr: '512 MB üstü RAM verme. Touchpad modu önerilir', tipEn: 'Do not exceed 512 MB RAM. Trackpad mode recommended'),
   OsType(id: 'winme', family: 'windows', name: 'Windows ME', badge: 'ME', arch: 'x86_32', cpu: 'pentium2',
       vga: 'cirrus', nic: 'pcnet', ram: 256, diskMb: 4096, tablet: false),
+  OsType(id: 'winnt4', family: 'windows', name: 'Windows NT 4.0', badge: 'NT', arch: 'x86_32', cpu: 'pentium',
+      vga: 'cirrus', nic: 'ne2k_pci', ram: 128, diskMb: 4096, tablet: false,
+      tipTr: 'Disk 2 GB üstünde olmasın (NT 4 kurulum sınırı)', tipEn: 'Keep the disk under 2 GB (NT 4 setup limit)'),
   OsType(id: 'win2k', family: 'windows', name: 'Windows 2000', badge: '2K', arch: 'x86_32', cpu: 'pentium3',
       vga: 'cirrus', nic: 'rtl8139', ram: 512, diskMb: 8192),
   OsType(id: 'winxp', family: 'windows', name: 'Windows XP', badge: 'XP', arch: 'x86_32', cpu: 'pentium3',
       vga: 'cirrus', nic: 'rtl8139', ram: 512, cpus: 1, diskMb: 10240,
       tipTr: 'Telefonda en dengeli Windows', tipEn: 'The most balanced Windows on a phone'),
+  OsType(id: 'winxp64', family: 'windows', name: 'Windows XP (64-bit)', badge: 'XP', arch: 'x86_64',
+      vga: 'cirrus', nic: 'rtl8139', ram: 1024, cpus: 1, diskMb: 16384),
+  OsType(id: 'win2003', family: 'windows', name: 'Windows Server 2003', badge: '03', arch: 'x86_32', cpu: 'pentium3',
+      vga: 'cirrus', nic: 'rtl8139', ram: 512, diskMb: 10240),
   OsType(id: 'winvista', family: 'windows', name: 'Windows Vista', badge: 'VI', arch: 'x86_32', ram: 1024,
       cpus: 2, diskMb: 20480, heavy: true),
+  OsType(id: 'winvista64', family: 'windows', name: 'Windows Vista (64-bit)', badge: 'VI', arch: 'x86_64',
+      ram: 2048, cpus: 2, diskMb: 25600, heavy: true),
   OsType(id: 'win7_32', family: 'windows', name: 'Windows 7 (32-bit)', badge: '7', arch: 'x86_32', ram: 1024,
       cpus: 2, diskMb: 20480, heavy: true),
   OsType(id: 'win7', family: 'windows', name: 'Windows 7 (64-bit)', badge: '7', arch: 'x86_64', ram: 2048,
@@ -132,6 +159,17 @@ const osCatalog = <OsType>[
       cpus: 2, diskMb: 32768, heavy: true),
   OsType(id: 'win10', family: 'windows', name: 'Windows 10 (64-bit)', badge: '10', arch: 'x86_64', ram: 3072,
       cpus: 2, diskMb: 40960, heavy: true),
+  OsType(id: 'win2008', family: 'windows', name: 'Windows Server 2008 R2', badge: '08', arch: 'x86_64', ram: 2048,
+      cpus: 2, diskMb: 32768, heavy: true),
+  OsType(id: 'win2012', family: 'windows', name: 'Windows Server 2012 R2', badge: '12', arch: 'x86_64', ram: 2048,
+      cpus: 2, diskMb: 32768, heavy: true),
+  OsType(id: 'win2016', family: 'windows', name: 'Windows Server 2016', badge: '16', arch: 'x86_64', ram: 2048,
+      cpus: 2, diskMb: 40960, heavy: true),
+  OsType(id: 'win2019', family: 'windows', name: 'Windows Server 2019', badge: '19', arch: 'x86_64', ram: 3072,
+      cpus: 2, diskMb: 40960, heavy: true),
+  OsType(id: 'win2022', family: 'windows', name: 'Windows Server 2022', badge: '22', arch: 'x86_64', ram: 4096,
+      cpus: 2, diskMb: 51200, heavy: true,
+      tipTr: 'Masaüstü deneyimi yerine Server Core çok daha hızlıdır', tipEn: 'Server Core is much faster than Desktop Experience'),
   OsType(id: 'win11', family: 'windows', name: 'Windows 11 (64-bit)', badge: '11', arch: 'x86_64', ram: 4096,
       cpus: 2, diskMb: 65536, heavy: true,
       tipTr: 'TPM/Güvenli Önyükleme kontrolünü atlatmak gerekir; çok yavaş çalışır',
@@ -153,6 +191,31 @@ const osCatalog = <OsType>[
       cpus: 2, diskMb: 16384),
   OsType(id: 'fedora', family: 'linux', name: 'Fedora (64-bit)', badge: 'FED', arch: 'x86_64', ram: 3072,
       cpus: 2, diskMb: 30720, heavy: true),
+  OsType(id: 'pardus', family: 'linux', name: 'Pardus (64-bit)', badge: 'PAR', arch: 'x86_64', ram: 2048, cpus: 2,
+      diskMb: 25600, heavy: true),
+  OsType(id: 'kali', family: 'linux', name: 'Kali Linux (64-bit)', badge: 'KAL', arch: 'x86_64', ram: 2048, cpus: 2,
+      diskMb: 25600, heavy: true),
+  OsType(id: 'manjaro', family: 'linux', name: 'Manjaro / EndeavourOS', badge: 'MJR', arch: 'x86_64', ram: 3072,
+      cpus: 2, diskMb: 30720, heavy: true),
+  OsType(id: 'opensuse', family: 'linux', name: 'openSUSE (64-bit)', badge: 'SUS', arch: 'x86_64', ram: 2048,
+      cpus: 2, diskMb: 30720, heavy: true),
+  OsType(id: 'rhel', family: 'linux', name: 'Rocky / Alma / CentOS (64-bit)', badge: 'RHL', arch: 'x86_64',
+      ram: 2048, cpus: 2, diskMb: 25600, tipTr: 'Minimal kurulum seç', tipEn: 'Choose the minimal install'),
+  OsType(id: 'slackware', family: 'linux', name: 'Slackware (64-bit)', badge: 'SLK', arch: 'x86_64', ram: 1024,
+      cpus: 2, diskMb: 16384),
+  OsType(id: 'gentoo', family: 'linux', name: 'Gentoo (64-bit)', badge: 'GEN', arch: 'x86_64', ram: 1024, cpus: 2,
+      diskMb: 20480),
+  OsType(id: 'voidlinux', family: 'linux', name: 'Void Linux (64-bit)', badge: 'VOI', arch: 'x86_64', ram: 1024,
+      cpus: 2, diskMb: 8192),
+  OsType(id: 'puppy', family: 'linux', name: 'Puppy Linux', badge: 'PUP', arch: 'x86_32', cpu: 'pentium3', ram: 512,
+      diskMb: 4096, tipTr: 'Tamamen RAM\'de çalışır, hızlıdır', tipEn: 'Runs entirely in RAM, fast'),
+  OsType(id: 'dsl', family: 'linux', name: 'Damn Small Linux', badge: 'DSL', arch: 'x86_32', cpu: 'pentium',
+      vga: 'cirrus', ram: 128, diskMb: 1024),
+  OsType(id: 'android_x86', family: 'linux', name: 'Android-x86 / Bliss / PrimeOS', badge: 'AND', arch: 'x86_64',
+      ram: 3072, cpus: 2, diskMb: 16384, heavy: true,
+      tipTr: 'Kurulum menüsünde "nomodeset" ile açmayı dene', tipEn: 'Try booting with "nomodeset" from the boot menu'),
+  OsType(id: 'chromeos', family: 'linux', name: 'ChromeOS Flex', badge: 'CRO', arch: 'x86_64', ram: 4096, cpus: 2,
+      diskMb: 32768, heavy: true, uefi: true),
   OsType(id: 'tinycore', family: 'linux', name: 'Tiny Core Linux', badge: 'TC', arch: 'x86_32', cpu: 'pentium3',
       ram: 256, diskMb: 1024, tipTr: '~20 MB, saniyeler içinde açılır', tipEn: '~20 MB, boots in seconds'),
   OsType(id: 'antix', family: 'linux', name: 'antiX (32-bit)', badge: 'AX', arch: 'x86_32', cpu: 'pentium3',
@@ -169,6 +232,10 @@ const osCatalog = <OsType>[
   OsType(id: 'msdos', family: 'dos', name: 'MS-DOS 6.22', badge: 'DOS', arch: 'x86_16', cpu: '486',
       vga: 'cirrus', ram: 16, diskMb: 256, boot: 'floppy', net: false, tablet: false,
       tipTr: 'Kurulum disketi (.img) ile açılır', tipEn: 'Boots from a setup floppy (.img)'),
+  OsType(id: 'drdos', family: 'dos', name: 'DR-DOS / OpenDOS', badge: 'DR', arch: 'x86_16', cpu: '486',
+      vga: 'cirrus', ram: 16, diskMb: 256, boot: 'floppy', net: false, tablet: false),
+  OsType(id: 'pcdos', family: 'dos', name: 'PC DOS (IBM)', badge: 'PC', arch: 'x86_16', cpu: '486', vga: 'cirrus',
+      ram: 16, diskMb: 256, boot: 'floppy', net: false, tablet: false),
   OsType(id: 'dos_other', family: 'dos', name: 'DOS (other)', badge: 'DOS', arch: 'x86_16', cpu: '486',
       vga: 'cirrus', ram: 16, diskMb: 256, net: false, tablet: false),
 
@@ -179,6 +246,16 @@ const osCatalog = <OsType>[
       cpus: 1, diskMb: 8192),
   OsType(id: 'netbsd', family: 'bsd', name: 'NetBSD (64-bit)', badge: 'NBS', arch: 'x86_64', ram: 512, cpus: 1,
       diskMb: 8192),
+  OsType(id: 'freebsd32', family: 'bsd', name: 'FreeBSD (32-bit)', badge: 'FBS', arch: 'x86_32', cpu: 'pentium3',
+      ram: 512, diskMb: 8192),
+  OsType(id: 'openbsd32', family: 'bsd', name: 'OpenBSD (32-bit)', badge: 'OBS', arch: 'x86_32', cpu: 'pentium3',
+      ram: 256, diskMb: 4096),
+  OsType(id: 'netbsd32', family: 'bsd', name: 'NetBSD (32-bit)', badge: 'NBS', arch: 'x86_32', cpu: 'pentium3',
+      ram: 256, diskMb: 4096),
+  OsType(id: 'dragonfly', family: 'bsd', name: 'DragonFly BSD', badge: 'DFY', arch: 'x86_64', ram: 1024, cpus: 2,
+      diskMb: 16384),
+  OsType(id: 'ghostbsd', family: 'bsd', name: 'GhostBSD', badge: 'GHO', arch: 'x86_64', ram: 2048, cpus: 2,
+      diskMb: 20480, heavy: true),
 
   // ------------------------------------------------------------ ARM / RISC-V / POWER Linux
   OsType(id: 'debian_arm64', family: 'linux', name: 'Debian (ARM 64)', badge: 'DEB', arch: 'arm64', ram: 1024,
@@ -209,8 +286,22 @@ const osCatalog = <OsType>[
       diskMb: 8192),
   OsType(id: 'linux_ppc', family: 'linux', name: 'Linux (PowerPC, other)', badge: 'PPC', arch: 'ppc', ram: 512,
       diskMb: 8192),
+  OsType(id: 'debian_m68k', family: 'linux', name: 'Debian (68k)', badge: 'DEB', arch: 'm68k', machine: 'q800',
+      ram: 256, diskMb: 4096,
+      tipTr: 'Çekirdek ve initrd CD\'den alınır (Gelişmiş açılış → CD\'den al)',
+      tipEn: 'Kernel and initrd are taken from the CD (Advanced boot → Get from CD)'),
+  OsType(id: 'linux_m68k', family: 'linux', name: 'Linux (68k, other)', badge: '68K', arch: 'm68k', machine: 'q800',
+      ram: 256, diskMb: 4096),
 
   // ------------------------------------------------------------ Mac OS (PowerPC)
+  OsType(id: 'macos7', family: 'macos', name: 'System 7.1 – Mac OS 7.6 (68k)', badge: '7', arch: 'm68k',
+      machine: 'q800', ram: 128, diskMb: 1024,
+      tipTr: 'Quadra 800 ROM dosyası gerekir (Gelişmiş açılış → BIOS / ROM)',
+      tipEn: 'Needs a Quadra 800 ROM file (Advanced boot → BIOS / ROM)'),
+  OsType(id: 'macos8_68k', family: 'macos', name: 'Mac OS 8.0 – 8.1 (68k)', badge: '8', arch: 'm68k',
+      machine: 'q800', ram: 256, diskMb: 2048,
+      tipTr: 'Quadra 800 ROM dosyası gerekir (Gelişmiş açılış → BIOS / ROM)',
+      tipEn: 'Needs a Quadra 800 ROM file (Advanced boot → BIOS / ROM)'),
   OsType(id: 'macos9', family: 'macos', name: 'Mac OS 9.2', badge: 'OS9', arch: 'ppc', ram: 512, diskMb: 4096,
       tipTr: 'Kurulum CD\'sinden açılır; diski önce Drive Setup ile biçimlendir',
       tipEn: 'Boots from the install CD; format the disk with Drive Setup first'),
@@ -235,6 +326,33 @@ const osCatalog = <OsType>[
   OsType(id: 'kolibri', family: 'other', name: 'KolibriOS', badge: 'KO', arch: 'x86_32', cpu: 'pentium3',
       ram: 128, diskMb: 0, tipTr: 'Tamamen ISO/disketten çalışır, disk gerekmez',
       tipEn: 'Runs entirely from ISO/floppy, no disk needed'),
+  OsType(id: 'os2', family: 'other', name: 'OS/2 Warp 3 / 4', badge: 'OS2', arch: 'x86_32', cpu: 'pentium',
+      vga: 'std', nic: 'pcnet', ram: 64, diskMb: 2048, tablet: false),
+  OsType(id: 'arcaos', family: 'other', name: 'ArcaOS / eComStation', badge: 'ARC', arch: 'x86_32', cpu: 'pentium3',
+      vga: 'std', nic: 'e1000', ram: 1024, diskMb: 8192),
+  OsType(id: 'beos', family: 'other', name: 'BeOS R5 / Zeta', badge: 'BE', arch: 'x86_32', cpu: 'pentium2',
+      vga: 'std', nic: 'ne2k_pci', ram: 256, diskMb: 2048, tablet: false),
+  OsType(id: 'solaris', family: 'other', name: 'Oracle Solaris (x86)', badge: 'SOL', arch: 'x86_64', ram: 2048,
+      cpus: 2, diskMb: 25600, heavy: true),
+  OsType(id: 'openindiana', family: 'other', name: 'OpenIndiana / illumos', badge: 'OI', arch: 'x86_64', ram: 2048,
+      cpus: 2, diskMb: 20480, heavy: true),
+  OsType(id: 'minix', family: 'other', name: 'MINIX 3', badge: 'MNX', arch: 'x86_32', cpu: 'pentium3', ram: 256,
+      diskMb: 2048, tablet: false),
+  OsType(id: 'plan9', family: 'other', name: 'Plan 9 / 9front', badge: '9', arch: 'x86_64', ram: 512, diskMb: 4096,
+      tablet: false),
+  OsType(id: 'qnx', family: 'other', name: 'QNX', badge: 'QNX', arch: 'x86_32', cpu: 'pentium3', ram: 256,
+      diskMb: 2048, tablet: false),
+  OsType(id: 'serenity', family: 'other', name: 'SerenityOS', badge: 'SER', arch: 'x86_64', ram: 1024, cpus: 2,
+      diskMb: 4096),
+  OsType(id: 'redox', family: 'other', name: 'Redox OS', badge: 'RDX', arch: 'x86_64', ram: 2048, cpus: 2,
+      diskMb: 4096),
+  OsType(id: 'templeos', family: 'other', name: 'TempleOS / ZealOS', badge: 'TOS', arch: 'x86_64', vga: 'std',
+      ram: 512, diskMb: 2048, net: false, tablet: false),
+  OsType(id: 'menuetos', family: 'other', name: 'MenuetOS', badge: 'MEN', arch: 'x86_64', ram: 256, diskMb: 0,
+      net: false, tablet: false, boot: 'floppy',
+      tipTr: 'Disket imajından açılır', tipEn: 'Boots from the floppy image'),
+  OsType(id: 'aros', family: 'other', name: 'AROS / Icaros Desktop', badge: 'ARO', arch: 'x86_32', cpu: 'pentium3',
+      ram: 512, diskMb: 4096, tablet: false),
   OsType(id: 'other16', family: 'other', name: 'Other / Unknown (16-bit)', badge: '16', arch: 'x86_16',
       cpu: '486', vga: 'cirrus', ram: 16, diskMb: 256, net: false, tablet: false),
   OsType(id: 'other32', family: 'other', name: 'Other / Unknown (32-bit)', badge: '32', arch: 'x86_32',
@@ -247,6 +365,8 @@ const osCatalog = <OsType>[
       ram: 256, diskMb: 0, net: false),
   OsType(id: 'other_ppc64', family: 'other', name: 'Other / Unknown (PowerPC 64)', badge: 'P64', arch: 'ppc64',
       ram: 512, diskMb: 0, net: false),
+  OsType(id: 'other_m68k', family: 'other', name: 'Other / Unknown (68k)', badge: '68K', arch: 'm68k',
+      machine: 'q800', ram: 128, diskMb: 0, net: false),
   OsType(id: 'other_riscv64', family: 'other', name: 'Other / Unknown (RISC-V 64)', badge: 'RV', arch: 'riscv64',
       ram: 256, cpus: 1, diskMb: 0, net: false),
   OsType(id: 'custom', family: 'other', name: 'Other / Unknown (64-bit)', badge: '64', arch: 'x86_64',
@@ -263,9 +383,10 @@ OsType osById(String id) {
 
 List<OsType> osOfFamily(String family) => osCatalog.where((o) => o.family == family).toList();
 
-/// Metindeki mimari ipucu: arm64, arm32, ppc64, ppc, riscv64 ya da null (x86 / bilinmiyor).
+/// Metindeki mimari ipucu: arm64, arm32, ppc64, ppc, riscv64, m68k ya da null (x86 / bilinmiyor).
 String? archHintOf(String text) {
   final s = text.toLowerCase();
+  if (RegExp(r'(m68k|\b68k\b|mc680[234]0|680[34]0|quadra|mac68k)').hasMatch(s)) return 'm68k';
   if (RegExp(r'(aarch64|arm64|armv8)').hasMatch(s)) return 'arm64';
   if (RegExp(r'(armhf|armel|armv7|arm32|\barm\b)').hasMatch(s)) return 'arm32';
   if (RegExp(r'(ppc64el|ppc64le|ppc64|power9|power8|pseries)').hasMatch(s)) return 'ppc64';
@@ -277,12 +398,13 @@ String? archHintOf(String text) {
 /// Bir dağıtımın başka mimarideki karşılığı (ör. debian + arm64 -> Debian (ARM 64)).
 OsType withArch(OsType os, String? arch) {
   if (arch == null || os.arch == arch || os.family == 'windows' || os.family == 'dos') return os;
-  final base = os.id.replaceAll(RegExp(r'(32|_armhf|_arm64|_riscv64|_ppc64|_ppc)$'), '');
+  final base = os.id.replaceAll(RegExp(r'(32|_armhf|_arm64|_riscv64|_ppc64|_ppc|_m68k)$'), '');
   const table = {
     'debian:arm64': 'debian_arm64', 'debian:arm32': 'debian_armhf', 'debian:riscv64': 'debian_riscv64',
     'debian:ppc64': 'debian_ppc64', 'debian:ppc': 'debian_ppc',
     'ubuntu:arm64': 'ubuntu_arm64', 'ubuntu:riscv64': 'ubuntu_riscv64', 'ubuntu:ppc64': 'ubuntu_ppc64',
     'alpine:arm64': 'alpine_arm64', 'fedora:arm64': 'fedora_arm64', 'freebsd:arm64': 'freebsd_arm64',
+    'debian:m68k': 'debian_m68k',
   };
   final hit = table['$base:$arch'];
   if (hit != null) return osById(hit);
@@ -292,6 +414,7 @@ OsType withArch(OsType os, String? arch) {
       'arm32' => 'linux_arm32',
       'riscv64' => 'linux_riscv64',
       'ppc' => 'linux_ppc',
+      'm68k' => 'linux_m68k',
       _ => 'debian_ppc64',
     });
   }
@@ -302,7 +425,11 @@ OsType withArch(OsType os, String? arch) {
 OsType? detectOs(String text) {
   final s = text.toLowerCase();
   if (s.trim().isEmpty) return null;
-  // Mac OS (PowerPC)
+  // Klasik Mac OS: 68k (Quadra) ve PowerPC
+  if (RegExp(r'(system ?7|mac ?os ?7|macos ?7|\bos ?7\.[0-6])').hasMatch(s)) return osById('macos7');
+  if (RegExp(r'(mac ?os ?8(\.[01])?\b|macos ?8(\.[01])?\b)').hasMatch(s) && !RegExp(r'8\.[56]').hasMatch(s)) {
+    return osById('macos8_68k');
+  }
   if (RegExp(r'(mac ?os ?9|macos9|os ?9\.\d)').hasMatch(s)) return osById('macos9');
   if (RegExp(r'(panther|mac ?os ?x? ?10\.3)').hasMatch(s)) return osById('macosx103');
   if (RegExp(r'(tiger|mac ?os ?x? ?10\.4)').hasMatch(s)) return osById('macosx104');
@@ -317,24 +444,65 @@ OsType? _detectBase(String text) {
   final s = text.toLowerCase();
   if (s.trim().isEmpty) return null;
   final is32 = RegExp(r'(i[3-6]86|x86(?![_-]?64)|x32|32[ -]?bit|\b32\b)').hasMatch(s);
+  final is64 = RegExp(r'(x64|amd64|x86[_-]64|64[ -]?bit)').hasMatch(s);
   bool has(String pattern) => RegExp(pattern).hasMatch(s);
+
+  // Windows Server
+  if (has(r'(server[^0-9]{0,15}2022|win(dows)?[ _.-]*2022|\bws2022)')) return osById('win2022');
+  if (has(r'(server[^0-9]{0,15}2019|win(dows)?[ _.-]*2019)')) return osById('win2019');
+  if (has(r'(server[^0-9]{0,15}2016|win(dows)?[ _.-]*2016)')) return osById('win2016');
+  if (has(r'(server[^0-9]{0,15}2012|win(dows)?[ _.-]*2012)')) return osById('win2012');
+  if (has(r'(server[^0-9]{0,15}2008|win(dows)?[ _.-]*2008)')) return osById('win2008');
+  if (has(r'(server[^0-9]{0,15}2003|win(dows)?[ _.-]*2003|\bw2k3\b|win2k3)')) return osById('win2003');
 
   if (has(r'win(dows)?[ _.-]*11')) return osById('win11');
   if (has(r'win(dows)?[ _.-]*10')) return osById(is32 ? 'win10_32' : 'win10');
   if (has(r'win(dows)?[ _.-]*8')) return osById('win8');
   if (has(r'win(dows)?[ _.-]*7|\bseven\b')) return osById(is32 ? 'win7_32' : 'win7');
-  if (has(r'vista')) return osById('winvista');
-  if (has(r'(\bxp\b|winxp|windows[ _.-]*xp|_xp_|-xp-)')) return osById('winxp');
+  if (has(r'vista')) return osById(is64 && !is32 ? 'winvista64' : 'winvista');
+  if (has(r'(\bxp\b|winxp|windows[ _.-]*xp|_xp_|-xp-)')) return osById(is64 && !is32 ? 'winxp64' : 'winxp');
   if (has(r'(win(dows)?[ _.-]*2000|win2k|\bw2k\b)')) return osById('win2k');
+  if (has(r'(win(dows)?[ _.-]*nt[ _.-]*4|winnt[ _.-]*4|\bnt[ _-]?4(\.0)?\b)')) return osById('winnt4');
   if (has(r'(win(dows)?[ _.-]*me\b|millennium)')) return osById('winme');
   if (has(r'win(dows)?[ _.-]*98|\bw98\b')) return osById('win98');
   if (has(r'win(dows)?[ _.-]*95|\bw95\b')) return osById('win95');
   if (has(r'win(dows)?[ _.-]*3\.?1?\b|wfw')) return osById('win31');
+  if (has(r'win(dows)?[ _.-]*2\.\d|win(dows)?[ _/-]*386\b')) return osById('win2');
+  if (has(r'win(dows)?[ _.-]*1\.0')) return osById('win1');
   if (has(r'(freedos|fdbasecd|fdfullcd|fd1[0-9]|fd14)')) return osById('freedos');
+  if (has(r'(dr[ _-]?dos|opendos|novell[ _-]?dos)')) return osById('drdos');
+  if (has(r'(pc[ _-]?dos|ibm[ _-]?dos)')) return osById('pcdos');
   if (has(r'(ms[ _-]?dos|\bdos[ _-]?6|dos622)')) return osById('msdos');
   if (has(r'\bdos\b')) return osById('dos_other');
   if (has(r'reactos')) return osById('reactos');
+  if (has(r'(arcaos|ecomstation|\becs[ _-]?2)')) return osById('arcaos');
+  if (has(r'(\bos[ /_-]?2\b|\bwarp[ _-]?[34]?\b)')) return osById('os2');
+  if (has(r'(\bbeos\b|beos[ _-]?r\d|\bzeta\b)')) return osById('beos');
+  if (has(r'(openindiana|illumos|omnios|\boi-hipster)')) return osById('openindiana');
+  if (has(r'(solaris|\bsol-1[01])')) return osById('solaris');
+  if (has(r'minix')) return osById('minix');
+  if (has(r'(plan[ _-]?9|9front)')) return osById('plan9');
+  if (has(r'\bqnx')) return osById('qnx');
+  if (has(r'serenity')) return osById('serenity');
+  if (has(r'redox')) return osById('redox');
+  if (has(r'(templeos|temple[ _-]os|zealos)')) return osById('templeos');
+  if (has(r'menuet')) return osById('menuetos');
+  if (has(r'(\baros\b|icaros)')) return osById('aros');
+  if (has(r'(android[-_ ]?x86|blissos|bliss[-_ ]?os|primeos|\bbliss\b)')) return osById('android_x86');
+  if (has(r'(chromeos|chrome[-_ ]?os|cloudready)')) return osById('chromeos');
+  if (has(r'(dragonfly)')) return osById('dragonfly');
+  if (has(r'ghostbsd')) return osById('ghostbsd');
   if (has(r'alpine')) return osById('alpine');
+  if (has(r'pardus')) return osById('pardus');
+  if (has(r'\bkali')) return osById('kali');
+  if (has(r'(manjaro|endeavour|garuda)')) return osById('manjaro');
+  if (has(r'(opensuse|\bsuse|\bsles)')) return osById('opensuse');
+  if (has(r'(rocky|almalinux|\balma\b|centos|\brhel)')) return osById('rhel');
+  if (has(r'slackware')) return osById('slackware');
+  if (has(r'gentoo')) return osById('gentoo');
+  if (has(r'void[-_ ]?(linux|live)')) return osById('voidlinux');
+  if (has(r'(puppy|fossapup|bookwormpup|\bpup[-_])')) return osById('puppy');
+  if (has(r'(\bdsl\b|damn[-_ ]?small)')) return osById('dsl');
   if (has(r'debian')) return osById(is32 ? 'debian32' : 'debian');
   if (has(r'(ubuntu|kubuntu|xubuntu|lubuntu)')) return osById('ubuntu');
   if (has(r'linux[ _-]?mint|\bmint\b')) return osById('mint');
@@ -342,9 +510,9 @@ OsType? _detectBase(String text) {
   if (has(r'fedora')) return osById('fedora');
   if (has(r'(tinycore|tiny[ _-]core|corepure|core-current|\bcore-\d)')) return osById('tinycore');
   if (has(r'antix')) return osById('antix');
-  if (has(r'freebsd')) return osById('freebsd');
-  if (has(r'openbsd')) return osById('openbsd');
-  if (has(r'netbsd')) return osById('netbsd');
+  if (has(r'freebsd')) return osById(is32 && !is64 ? 'freebsd32' : 'freebsd');
+  if (has(r'openbsd')) return osById(is32 && !is64 ? 'openbsd32' : 'openbsd');
+  if (has(r'netbsd')) return osById(is32 && !is64 ? 'netbsd32' : 'netbsd');
   if (has(r'haiku')) return osById('haiku');
   if (has(r'kolibri')) return osById('kolibri');
   if (has(r'(linux|pardus|pisi|centos|rocky|alma|rhel|opensuse|suse|manjaro|endeavour|garuda|artix|kali|parrot|'
@@ -560,7 +728,9 @@ OsType? _detectFromIsoLabel(String label) {
 OsType? _detectFromBootSector(String oem, String vol) {
   if (oem.contains('FRDOS') || oem.contains('FREEDOS')) return osById('freedos');
   if (oem.startsWith('MSWIN4')) return osById('win98');
-  if (oem.startsWith('MSDOS') || oem.startsWith('IBM')) return osById('msdos');
+  if (oem.contains('DRDOS') || oem.contains('OPENDOS')) return osById('drdos');
+  if (oem.startsWith('IBM')) return osById('pcdos');
+  if (oem.startsWith('MSDOS')) return osById('msdos');
   return detectOs(vol);
 }
 

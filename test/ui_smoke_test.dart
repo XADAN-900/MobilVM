@@ -33,6 +33,12 @@ final _vms = [
       isoPath: '/img/debian-arm64.iso', diskPath: '/img/arm.qcow2', createdAt: 4),
   VmConfig(id: 'e', name: 'Mac OS 9.2', template: 'macos9', arch: 'ppc', ramMb: 512, cpus: 1,
       isoPath: '/img/MacOS9.toast', diskPath: '/img/mac.qcow2', createdAt: 5),
+  VmConfig(id: 'f', name: 'Debian 68k (Quadra 800)', template: 'debian_m68k', arch: 'm68k', machine: 'q800',
+      ramMb: 256, cpus: 1, isoPath: '/img/debian-12.0.0-m68k-NETINST-1.iso', diskPath: '/img/m68k.qcow2',
+      kernelPath: '/img/debian-12.0.0-m68k-NETINST-1-kernel', initrdPath: '/img/debian-12.0.0-m68k-NETINST-1-initrd.gz',
+      kernelArgs: 'console=tty0', sharedFolder: true, sharedWritable: true, clipboard: false, createdAt: 6),
+  VmConfig(id: 'g', name: 'Mac OS 7.6', template: 'macos7', arch: 'm68k', machine: 'q800', ramMb: 128, cpus: 1,
+      isoPath: '/img/MacOS76.iso', createdAt: 7),
 ];
 
 final _images = [
@@ -171,20 +177,26 @@ void main() {
           await done(tester);
         });
 
-        for (final vmIndex in [1, 3, 4]) {
-          testWidgets('VM ayarları ${_vms[vmIndex].archLabel} $tag', (tester) async {
-            await setSize(tester, height: 4200);
+        for (final vmIndex in [1, 3, 4, 5, 6]) {
+          testWidgets('VM ayarları ${_vms[vmIndex].archLabel} #$vmIndex $tag', (tester) async {
+            await setSize(tester, height: 7000);
             await tester.pumpWidget(_wrap(EditorScreen(vm: _vms[vmIndex]), lang, scale));
             await tester.pump(const Duration(milliseconds: 500));
-            await tester.tap(find.byType(ExpansionTile));
+            // "Gelişmiş" en alttaki; "Gelişmiş açılış" 68k'da zaten açık, diğerlerinde açılır
+            await tester.tap(find.byType(ExpansionTile).last);
             await tester.pump(const Duration(milliseconds: 600));
+            if (_vms[vmIndex].arch != 'm68k') {
+              await tester.tap(find.byType(ExpansionTile).first);
+              await tester.pump(const Duration(milliseconds: 600));
+            }
             await done(tester);
           });
         }
 
         testWidgets('ayrıntılar $tag', (tester) async {
           await setSize(tester, height: 4200);
-          await tester.pumpWidget(_wrap(DetailsScreen(vmId: lang == 'ar' || lang == 'ru' ? 'd' : 'b'), lang, scale));
+          final id = switch (lang) { 'ar' || 'ru' => 'd', 'de' || 'pt' || 'fr' => 'f', _ => 'b' };
+          await tester.pumpWidget(_wrap(DetailsScreen(vmId: id), lang, scale));
           await tester.pump(const Duration(milliseconds: 500));
           await done(tester);
         });
@@ -207,6 +219,8 @@ void main() {
           await tester.pumpWidget(_wrap(DisplayScreen(vm: _vms[1]), lang, scale));
           await tester.pump(const Duration(milliseconds: 300));
           app.debugEmit({'type': 'display', 'state': 'connected', 'width': 1024, 'height': 768});
+          await tester.pump(const Duration(milliseconds: 300));
+          app.debugEmit({'type': 'clipboard', 'text': 'merhaba dünya'});
           await tester.pump(const Duration(milliseconds: 300));
           await tester.tap(find.byIcon(Icons.space_bar_rounded));
           await tester.pump(const Duration(milliseconds: 300));

@@ -14,12 +14,12 @@ const _phone = '__phone__';
 final _copySuffix = RegExp(r'^(.*) \((\d+)\)(\.[^.]*)?$');
 
 /// Ortam seçer: önce kütüphanedeki uygun dosyalar, istenirse telefondan yeni dosya.
-/// [kind]: 'cd' | 'floppy' | 'disk'. [vmId]: seçimi yapan VM (disk paylaşım uyarısı için).
+/// [kind]: 'cd' | 'floppy' | 'disk' | 'any' (çekirdek, ROM). [vmId]: seçimi yapan VM (disk paylaşım uyarısı için).
 Future<String?> chooseMedia(BuildContext context, String kind, {String? vmId}) async {
   final files = await Backend.callList('listImages');
   final list = files.where((f) {
     final c = classifyMedia(f['path'] as String);
-    return c == kind || (c == null && kind != 'floppy');
+    return kind == 'any' || c == kind || (c == null && kind != 'floppy');
   }).toList();
   if (!context.mounted) return null;
 
@@ -34,7 +34,7 @@ Future<String?> chooseMedia(BuildContext context, String kind, {String? vmId}) a
 
   String? path = choice == _phone ? await importFromPhone(context) : choice;
   if (path == null || !context.mounted) return null;
-  if (classifyMedia(path) == 'disk' || kind == 'disk') path = await _checkSharedDisk(context, path, vmId);
+  if (kind != 'any' && (classifyMedia(path) == 'disk' || kind == 'disk')) path = await _checkSharedDisk(context, path, vmId);
   return path;
 }
 
@@ -150,6 +150,7 @@ class _LibrarySheet extends StatelessWidget {
     final title = switch (kind) {
       'floppy' => t('Disket imajı seç', 'Choose a floppy image'),
       'disk' => t('Sabit disk seç', 'Choose a hard disk'),
+      'any' => t('Dosya seç', 'Choose a file'),
       _ => t('CD / DVD imajı seç', 'Choose a CD / DVD image'),
     };
     return ConstrainedBox(
@@ -214,12 +215,13 @@ class _FileTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final path = file['path'] as String;
-    final users = app.vms.where((v) => v.isoPath == path || v.diskPath == path || v.floppyPath == path).toList();
+    final users = app.vms.where((v) => v.uses(path)).toList();
     final date = DateTime.fromMillisecondsSinceEpoch((file['modified'] as num).toInt());
     String two(int x) => x.toString().padLeft(2, '0');
     final icon = switch (kind) {
       'floppy' => Icons.sd_card_rounded,
       'disk' => Icons.save_rounded,
+      'any' => Icons.description_rounded,
       _ => Icons.album_rounded,
     };
     return Padding(
@@ -240,7 +242,7 @@ class _FileTile extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text('${fmtBytes((file['size'] as num).toInt())} · ${two(date.day)}.${two(date.month)}.${date.year}',
                       style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                  if (kind != 'disk')
+                  if (kind != 'disk' && kind != 'any')
                     FutureBuilder<OsDetection?>(
                       future: cachedDetect(path),
                       builder: (_, snap) {

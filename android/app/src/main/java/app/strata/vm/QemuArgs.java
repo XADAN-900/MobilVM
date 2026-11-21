@@ -14,6 +14,7 @@ import java.util.Locale;
  *   ppc                      : PowerMac G4 "mac99" + OpenBIOS (Mac OS 9, Mac OS X, Linux)
  *   ppc64                    : IBM POWER "pseries" + SLOF (ppc64el Linux)
  *   riscv64                  : RISC-V "virt" + OpenSBI + UEFI
+ *   m68k                     : Macintosh Quadra 800 "q800" (Mac ROM ya da Linux çekirdeği) / m68k "virt"
  */
 final class QemuArgs {
     static final int VNC_DISPLAY = 1;
@@ -29,7 +30,16 @@ final class QemuArgs {
         String sharedDir;   // paylaşılan klasör
         int tbSize = 256;
         boolean mttcg = true;
+        boolean audio = true; // ayarlardan ses kapatıldıysa hiç ses aygıtı eklenmez
     }
+
+    /** Ses aygıtı yalnızca VNC üzerinden telefona akar; QEMU'nun kendi çıkışı "none". */
+    static final String AUDIODEV = "snd0";
+
+    /** Eski Sound Blaster dünyası: DOS, Windows 1-3.x ve 9x. */
+    private static final java.util.Set<String> SB16_TEMPLATES = new java.util.HashSet<>(java.util.Arrays.asList(
+            "win1", "win2", "win31", "win95", "win98", "winme", "freedos", "msdos", "drdos", "pcdos",
+            "dos_other", "other16", "win9x_other"));
 
     private QemuArgs() {}
 
@@ -45,6 +55,7 @@ final class QemuArgs {
             case "ppc":
             case "ppc64": return "qemu-system-ppc64";
             case "riscv64": return "qemu-system-riscv64";
+            case "m68k": return "qemu-system-m68k";
             case "x86_64": return "qemu-system-x86_64";
             default: return "qemu-system-i386";
         }
@@ -74,6 +85,7 @@ final class QemuArgs {
             case "ppc": return "G4";
             case "ppc64": return "POWER9";
             case "riscv64": return "rv64";
+            case "m68k": return "m68040";
             default: return "max";
         }
     }
@@ -84,12 +96,52 @@ final class QemuArgs {
             case "x86_16": return 256;
             case "ppc": return 2048;      // mac99
             case "arm32": return 3072;    // highmem=off
+            case "m68k": return 1024;     // q800 en fazla 1 GB
             default: return 65536;
         }
     }
 
     static int maxCpus(String arch) {
-        return arch.equals("ppc") || arch.equals("x86_16") ? 1 : 16;
+        return arch.equals("ppc") || arch.equals("x86_16") || arch.equals("m68k") ? 1 : 16;
+    }
+
+    /** "auto" ses ayarını mimariye ve sisteme göre gerçek aygıta çevirir. */
+    static String soundFor(VmConfig vm) {
+        String s = vm.sound == null || vm.sound.isEmpty() ? "auto" : vm.sound;
+        if (!s.equals("auto")) {
+            // ISA kartı yalnızca x86'da; PCI kartları ISA PC ve 68k'da yok
+            if (s.equals("sb16") && !isX86(vm.arch)) return "hda";
+            if (vm.arch.equals("m68k")) return s.equals("none") ? "none" : "asc";
+            if (isX86(vm.arch) && "isapc".equals(vm.machine) && !s.equals("none")) return "sb16";
+            return s;
+        }
+        switch (vm.arch) {
+            case "x86_16": return "sb16";
+            case "x86_32":
+                return "isapc".equals(vm.machine) || SB16_TEMPLATES.contains(vm.template) ? "sb16" : "ac97";
+            case "x86_64":
+                return SB16_TEMPLATES.contains(vm.template) ? "sb16" : "hda";
+            case "m68k": return "virt".equals(vm.machine) ? "none" : "asc"; // Quadra'nın kendi ses yongası
+            case "ppc": return "none"; // mac99'da QEMU ses yongası yok; Mac OS'ta PCI ses sürücüsü de yok
+            default: return "hda";
+        }
+    }
+
+    /** Ortak pano için virtio-serial + qemu-vdagent eklenebilir mi? */
+    static boolean clipboardCapable(VmConfig vm) {
+        if (vm.arch.equals("x86_16") || vm.arch.equals("ppc") || vm.arch.equals("m68k")) return false;
+        // DOS / Windows 9x'te bilinmeyen PCI aygıtı her açılışta sürücü sorar
+        if (SB16_TEMPLATES.contains(vm.template)) return false;
+        return !(isX86(vm.arch) && "isapc".equals(vm.machine));
+    }
+
+    /** 68k makinesinin açılabilmesi için çekirdek ya da (Quadra'da) Mac ROM gerekir. */
+    static String bootProblem(VmConfig vm) {
+        if (!vm.arch.equals("m68k") || !vm.kernelPath.isEmpty()) return null;
+        if (!"virt".equals(vm.machine) && !vm.biosPath.isEmpty()) return null;
+        return "virt".equals(vm.machine)
+                ? "m68k virt needs a Linux kernel (Advanced boot → Kernel)"
+                : "Quadra 800 needs a Macintosh ROM (Advanced boot → BIOS/ROM) or a Linux kernel";
     }
 
     // ------------------------------------------------------------------ komut satırı
@@ -97,14 +149,58 @@ final class QemuArgs {
     static List<String> build(VmConfig vm, Env env) {
         List<String> a = new ArrayList<>();
         add(a, env.binary, "-L", env.shareDir, "-name", esc(vm.name.isEmpty() ? "VM" : vm.name));
-        if (isX86(vm.arch)) buildX86(a, vm, env); else buildOther(a, vm, env);
+        String problem = bootProblem(vm);
+        if (problem != null) throw new IllegalStateException(problem);
+        String snd = env.audio ? soundFor(vm) : "none";
+        if (isX86(vm.arch)) buildX86(a, vm, env, snd); else buildOther(a, vm, env, snd);
+        boot(a, vm);
+        sound(a, vm, snd);
+        if (vm.clipboard && clipboardCapable(vm)) {
+            // Misafirde spice-vdagent çalışıyorsa pano VNC üzerinden telefonla eşitlenir
+            add(a, "-chardev", "qemu-vdagent,id=vdagent0,name=vdagent,clipboard=on,mouse=off");
+            add(a, "-device", "virtio-serial-pci,id=vser0");
+            add(a, "-device", "virtserialport,bus=vser0.0,chardev=vdagent0,name=com.redhat.spice.0");
+        }
 
-        add(a, "-display", "none", "-vnc", "127.0.0.1:" + VNC_DISPLAY);
+        add(a, "-display", "none", "-vnc", "127.0.0.1:" + VNC_DISPLAY + (snd.equals("none") ? "" : ",audiodev=" + AUDIODEV));
         add(a, "-qmp", "tcp:127.0.0.1:" + QMP_PORT + ",server=on,wait=off");
         if (!vm.keyboard.trim().isEmpty()) add(a, "-k", vm.keyboard.trim());
         if (vm.savedState) add(a, "-loadvm", SAVED_STATE);
         a.addAll(splitArgs(vm.extraArgs));
         return a;
+    }
+
+    /** Doğrudan çekirdek açılışı ve özel BIOS/ROM. */
+    private static void boot(List<String> a, VmConfig vm) {
+        if (!vm.kernelPath.isEmpty()) {
+            add(a, "-kernel", vm.kernelPath);
+            if (!vm.initrdPath.isEmpty()) add(a, "-initrd", vm.initrdPath);
+            if (!vm.kernelArgs.trim().isEmpty()) add(a, "-append", vm.kernelArgs.trim());
+        }
+        if (!vm.biosPath.isEmpty()) add(a, "-bios", vm.biosPath);
+    }
+
+    private static void sound(List<String> a, VmConfig vm, String snd) {
+        if (snd.equals("none")) return;
+        add(a, "-audiodev", "none,id=" + AUDIODEV);
+        String dev = "audiodev=" + AUDIODEV;
+        switch (snd) {
+            case "sb16":
+                add(a, "-device", "sb16," + dev, "-device", "adlib," + dev);
+                break;
+            case "ac97": add(a, "-device", "AC97," + dev); break;
+            case "es1370": add(a, "-device", "ES1370," + dev); break;
+            case "virtio": add(a, "-device", "virtio-sound-pci," + dev); break;
+            case "asc": break; // q800: makine özelliği olarak verildi
+            default: add(a, "-device", "intel-hda", "-device", "hda-duplex," + dev); break;
+        }
+    }
+
+    private static boolean customBios(VmConfig vm) { return !vm.biosPath.isEmpty(); }
+
+    private static String sharedDrive(VmConfig vm, Env env) {
+        // Yazılabilir: misafirin yazdıkları telefondaki klasöre geçer. Salt okunur: geçici katmana gider.
+        return "fat:" + (vm.sharedWritable ? "rw:" : "") + env.sharedDir + ",format=raw" + (vm.sharedWritable ? "" : ",snapshot=on");
     }
 
     private static void common(List<String> a, VmConfig vm, Env env, int cpus) {
@@ -118,7 +214,7 @@ final class QemuArgs {
 
     private static void uefi(List<String> a, VmConfig vm, Env env) {
         String[] f = uefiFiles(vm);
-        if (f == null) return;
+        if (f == null || customBios(vm)) return;
         if (env.nvramFile == null) throw new IllegalStateException("UEFI vars file missing");
         add(a, "-drive", "if=pflash,format=raw,unit=0,readonly=on,file=" + esc(env.shareDir + "/" + f[0]));
         add(a, "-drive", "if=pflash,format=raw,unit=1,file=" + esc(env.nvramFile));
@@ -135,10 +231,11 @@ final class QemuArgs {
 
     // ------------------------------------------------------------------ x86 (PC)
 
-    private static void buildX86(List<String> a, VmConfig vm, Env env) {
+    private static void buildX86(List<String> a, VmConfig vm, Env env, String snd) {
         String machine = vm.machine.isEmpty() ? "pc" : vm.machine;
         boolean isa = machine.equals("isapc");
-        add(a, "-M", machine);
+        // PC hoparlörü (bip sesleri, eski oyunlar) da telefona gelsin
+        add(a, "-M", machine + (snd.equals("none") ? "" : ",pcspk-audiodev=" + AUDIODEV));
         common(a, vm, env, Math.max(1, Math.min(vm.cpus, maxCpus(vm.arch))));
         if (!vm.vga.isEmpty()) add(a, "-vga", vm.vga);
         if (!vm.arch.equals("x86_16")) uefi(a, vm, env);
@@ -155,7 +252,7 @@ final class QemuArgs {
         }
         if (vm.sharedFolder && env.sharedDir != null) {
             // Telefondaki klasör VM'de ikinci sabit disk (FAT); misafirin yazdıkları geçici katmana gider
-            add(a, "-drive", "id=share0,file=fat:" + env.sharedDir + ",format=raw,if=ide,index=1,media=disk,snapshot=on");
+            add(a, "-drive", "id=share0,file=" + sharedDrive(vm, env) + ",if=ide,index=1,media=disk");
         }
         if (!vm.floppyPath.isEmpty()) {
             add(a, "-drive", "id=fd0,file=" + esc(vm.floppyPath) + ",format=raw,if=floppy,index=0");
@@ -172,7 +269,11 @@ final class QemuArgs {
 
     // ------------------------------------------------------------------ ARM, PowerPC, RISC-V
 
-    private static void buildOther(List<String> a, VmConfig vm, Env env) {
+    private static void buildOther(List<String> a, VmConfig vm, Env env, String snd) {
+        if (vm.arch.equals("m68k")) {
+            buildM68k(a, vm, env, snd);
+            return;
+        }
         switch (vm.arch) {
             case "arm64":
                 add(a, "-M", "virt");
@@ -216,7 +317,7 @@ final class QemuArgs {
             add(a, "-drive", "id=cd0,if=ide,index=2,media=cdrom");
         }
         if (vm.sharedFolder && env.sharedDir != null) {
-            add(a, "-drive", "id=share0,file=fat:" + env.sharedDir + ",format=raw,if=ide,index=1,media=disk,snapshot=on");
+            add(a, "-drive", "id=share0,file=" + sharedDrive(vm, env) + ",if=ide,index=1,media=disk");
         }
         net(a, vm, "sungem");
         add(a, "-device", "usb-kbd", "-device", "usb-tablet");
@@ -246,10 +347,53 @@ final class QemuArgs {
         }
         add(a, "-device", "scsi-cd,drive=cd0,bus=scsi0.0,bootindex=" + (bootCd ? 0 : 1));
         if (vm.sharedFolder && env.sharedDir != null) {
-            add(a, "-drive", "id=share0,if=none,file=fat:" + env.sharedDir + ",format=raw,snapshot=on");
+            add(a, "-drive", "id=share0,if=none,file=" + sharedDrive(vm, env));
             add(a, "-device", "virtio-blk-pci,drive=share0");
         }
         net(a, vm, "virtio-net-pci,romfile=");
+    }
+
+    // ------------------------------------------------------------------ Motorola 68k
+
+    /**
+     * q800: Macintosh Quadra 800 (Mac OS 7.1–8.1 için gerçek Mac ROM gerekir; Linux/NetBSD çekirdekle açılır).
+     * Diskler SCSI, ekran yerleşik NuBus kartı, klavye/fare ADB, ağ SONIC (dp83932), ses ASC yongası.
+     * virt: yalnızca Linux çekirdeğiyle; virtio-mmio aygıtları.
+     */
+    private static void buildM68k(List<String> a, VmConfig vm, Env env, String snd) {
+        boolean virt = "virt".equals(vm.machine);
+        add(a, "-M", virt ? "virt" : "q800" + (snd.equals("asc") ? ",audiodev=" + AUDIODEV : ""));
+        common(a, vm, env, 1);
+        if (virt) {
+            add(a, "-device", "virtio-gpu-device", "-device", "virtio-keyboard-device", "-device", "virtio-tablet-device");
+            if (!vm.diskPath.isEmpty()) {
+                add(a, "-drive", "id=hd0,if=none,file=" + esc(vm.diskPath) + ",format=" + diskFormat(vm.diskPath));
+                add(a, "-device", "virtio-blk-device,drive=hd0");
+            }
+            add(a, "-device", "virtio-scsi-device,id=scsi0");
+            add(a, "-drive", "id=cd0,if=none,media=cdrom,readonly=on" + (vm.isoPath.isEmpty() ? ""
+                    : ",format=" + cdFormat(vm.isoPath) + ",file=" + esc(vm.isoPath)));
+            add(a, "-device", "scsi-cd,drive=cd0,bus=scsi0.0");
+            if (vm.sharedFolder && env.sharedDir != null) {
+                add(a, "-drive", "id=share0,if=none,file=" + sharedDrive(vm, env));
+                add(a, "-device", "virtio-blk-device,drive=share0");
+            }
+            net(a, vm, "virtio-net-device");
+        } else {
+            // SCSI kimlikleri: 0 disk, 1 paylaşılan klasör, 3 CD (Mac geleneği)
+            if (!vm.diskPath.isEmpty()) {
+                add(a, "-drive", "id=hd0,file=" + esc(vm.diskPath) + ",format=" + diskFormat(vm.diskPath)
+                        + ",if=scsi,index=0,media=disk");
+            }
+            if (vm.sharedFolder && env.sharedDir != null) {
+                add(a, "-drive", "id=share0,file=" + sharedDrive(vm, env) + ",if=scsi,index=1,media=disk");
+            }
+            add(a, "-drive", "id=cd0,if=scsi,index=3,media=cdrom" + (vm.isoPath.isEmpty() ? ""
+                    : ",format=" + cdFormat(vm.isoPath) + ",file=" + esc(vm.isoPath)));
+            // SONIC ağ kartı makineye lehimli: -nic ile bağlanır
+            add(a, "-nic", vm.net ? "user,model=dp83932" + hostForwards(vm.portForwards) : "none");
+        }
+        if (vm.rtcLocal) add(a, "-rtc", "base=localtime");
     }
 
     // ------------------------------------------------------------------ yardımcılar

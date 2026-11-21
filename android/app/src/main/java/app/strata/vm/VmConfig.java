@@ -11,7 +11,7 @@ final class VmConfig {
     String id = "";
     String name = "VM";
     String template = "custom";
-    String arch = "x86_64";        // x86_16 | x86_32 | x86_64
+    String arch = "x86_64";        // x86_16 | x86_32 | x86_64 | arm64 | arm32 | ppc | ppc64 | riscv64 | m68k
     String machine = "pc";         // pc | q35 | isapc
     String cpuModel = "";          // boş = mimariye göre varsayılan
     int ramMb = 1024;
@@ -31,6 +31,13 @@ final class VmConfig {
     boolean savedState = false;    // "Durumu kaydet ile kapatıldı" -> sonraki açılışta -loadvm
     boolean sharedFolder = false;  // telefondaki klasörü FAT sürücü olarak bağla
     String firmware = "bios";      // bios | uefi
+    String sound = "auto";         // auto | none | sb16 | ac97 | es1370 | hda | virtio
+    boolean clipboard = true;      // ortak pano (qemu-vdagent; misafirde spice-vdagent gerekir)
+    boolean sharedWritable = false;// paylaşılan klasöre misafir de yazabilsin
+    String kernelPath = "";        // doğrudan çekirdek açılışı (-kernel)
+    String initrdPath = "";        // -initrd
+    String kernelArgs = "";        // -append
+    String biosPath = "";          // özel BIOS / ROM (-bios), ör. Macintosh Quadra ROM
     long createdAt = 0;
     long lastRunAt = 0;
 
@@ -59,6 +66,13 @@ final class VmConfig {
         v.savedState = bool(m, "savedState", v.savedState);
         v.sharedFolder = bool(m, "sharedFolder", v.sharedFolder);
         v.firmware = str(m, "firmware", v.firmware);
+        v.sound = str(m, "sound", v.sound);
+        v.clipboard = bool(m, "clipboard", v.clipboard);
+        v.sharedWritable = bool(m, "sharedWritable", v.sharedWritable);
+        v.kernelPath = str(m, "kernelPath", v.kernelPath);
+        v.initrdPath = str(m, "initrdPath", v.initrdPath);
+        v.kernelArgs = str(m, "kernelArgs", v.kernelArgs);
+        v.biosPath = str(m, "biosPath", v.biosPath);
         v.createdAt = num(m, "createdAt", 0);
         v.lastRunAt = num(m, "lastRunAt", 0);
         return v;
@@ -89,6 +103,13 @@ final class VmConfig {
         m.put("savedState", savedState);
         m.put("sharedFolder", sharedFolder);
         m.put("firmware", firmware);
+        m.put("sound", sound);
+        m.put("clipboard", clipboard);
+        m.put("sharedWritable", sharedWritable);
+        m.put("kernelPath", kernelPath);
+        m.put("initrdPath", initrdPath);
+        m.put("kernelArgs", kernelArgs);
+        m.put("biosPath", biosPath);
         m.put("createdAt", createdAt);
         m.put("lastRunAt", lastRunAt);
         return m;

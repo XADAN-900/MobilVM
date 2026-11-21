@@ -70,6 +70,9 @@ final class Store {
         m.put("tbSize", 256);          // TCG çeviri önbelleği (MB)
         m.put("keyboard", "en-us");
         m.put("mttcg", true);          // çok çekirdekli emülasyon
+        m.put("sound", true);          // VM sesi telefona aktarılsın
+        m.put("muted", false);         // ekrandaki sessiz düğmesi
+        m.put("gamepad", true);        // oyun kumandası tuşları VM'e
         return m;
     }
 

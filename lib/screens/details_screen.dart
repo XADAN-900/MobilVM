@@ -310,10 +310,20 @@ class _DetailsScreenState extends State<DetailsScreen> {
                           await _loadShared();
                         },
                   title: Text(t('Telefondan VM\'e dosya aktar', 'Transfer files from phone to VM')),
-                  subtitle: Text(t(
+                  subtitle: Text(vm.sharedWritable
+                      ? t('Eklediğin dosyalar VM\'de ayrı bir sürücü (FAT) olarak görünür. En fazla ~500 MB. VM\'in kaydettikleri buraya gelir.',
+                          'Files you add appear as a separate FAT drive in the VM. Up to ~500 MB. Files the VM saves show up here.')
+                      : t(
                       'Eklediğin dosyalar VM\'de ayrı bir sürücü (FAT) olarak görünür. En fazla ~500 MB. VM\'in yazdıkları kaybolur.',
                       'Files you add appear as a separate FAT drive in the VM. Up to ~500 MB. Changes made by the VM are discarded.')),
                 ),
+                if (vm.sharedFolder)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: vm.sharedWritable,
+                    onChanged: running ? null : (x) => app.save(vm.copy()..sharedWritable = x),
+                    title: Text(t('VM klasöre yazabilsin', 'Let the VM write to the folder')),
+                  ),
                 if (vm.sharedFolder) ...[
                   for (final f in _shared)
                     ListTile(
@@ -322,13 +332,28 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       leading: const Icon(Icons.insert_drive_file_outlined),
                       title: Text(f['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(fmtBytes((f['size'] as num).toInt())),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () async {
-                          await Backend.call('sharedDelete', {'id': vm.id, 'path': f['path']});
-                          await _loadShared();
-                        },
-                      ),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(
+                          tooltip: t('İndirilenler\'e aktar', 'Export to Downloads'),
+                          icon: const Icon(Icons.download_rounded),
+                          onPressed: () async {
+                            try {
+                              final p = await Backend.call<String>('sharedExport', {'id': vm.id, 'path': f['path']});
+                              if (context.mounted) toast(context, '${t('Kaydedildi', 'Saved')}: $p');
+                            } catch (e) {
+                              if (context.mounted) toast(context, '$e');
+                            }
+                          },
+                        ),
+                        IconButton(
+                          tooltip: t('Kaldır', 'Remove'),
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () async {
+                            await Backend.call('sharedDelete', {'id': vm.id, 'path': f['path']});
+                            await _loadShared();
+                          },
+                        ),
+                      ]),
                     ),
                   Align(
                     alignment: Alignment.centerLeft,

@@ -50,7 +50,7 @@ class _ImagesScreenState extends State<ImagesScreen> {
   }
 
   bool _inUse(String path) =>
-      app.vms.any((v) => v.isoPath == path || v.diskPath == path || v.floppyPath == path);
+      app.vms.any((v) => v.uses(path));
 
   Future<void> _import() async {
     final p = await importFromPhone(context);
