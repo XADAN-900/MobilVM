@@ -2,8 +2,8 @@
 """
 Termux (aarch64) paket deposundan hazır derlenmiş QEMU'yu indirir ve projeye yerleştirir.
 
-  Çalıştırılabilirler          -> app/src/main/jniLibs/arm64-v8a/lib*.so
-  Kütüphaneler + BIOS dosyaları -> app/src/main/assets/qemu-runtime.zip
+  Çalıştırılabilirler          -> android/app/src/main/jniLibs/arm64-v8a/lib*.so
+  Kütüphaneler + BIOS dosyaları -> android/app/src/main/assets/qemu-runtime.zip
 
 Kullanım:
   python3 scripts/fetch_qemu_termux.py            # x86_64 + i386 + qemu-img
@@ -12,6 +12,7 @@ Kullanım:
 Not: QEMU GPLv2 lisanslıdır. APK'yı dağıtırsan kaynak kodu da sunmalısın.
 """
 import argparse
+import json
 import gzip
 import io
 import lzma
@@ -29,8 +30,9 @@ DEFAULT_MIRROR = "https://packages-cf.termux.dev/apt/termux-main"
 PREFIX = "/data/data/com.termux/files/usr"
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-JNI_DIR = os.path.join(ROOT_DIR, "app", "src", "main", "jniLibs", "arm64-v8a")
-ASSET_ZIP = os.path.join(ROOT_DIR, "app", "src", "main", "assets", "qemu-runtime.zip")
+JNI_DIR = os.path.join(ROOT_DIR, "android", "app", "src", "main", "jniLibs", "arm64-v8a")
+ASSET_ZIP = os.path.join(ROOT_DIR, "android", "app", "src", "main", "assets", "qemu-runtime.zip")
+ASSET_INFO = os.path.join(ROOT_DIR, "android", "app", "src", "main", "assets", "qemu-runtime.json")
 
 # (aday paket adları, usr/bin içindeki ad, APK içindeki ad)
 BINARIES = [
@@ -254,6 +256,10 @@ def collect(staging, links):
             f = real_file(staging, links, f"{PREFIX}/share/qemu/{rel}")
             if f:
                 z.write(f, f"share/qemu/{rel}"); count += 1
+    with zipfile.ZipFile(ASSET_ZIP) as z:
+        total = sum(i.file_size for i in z.infolist())
+    with open(ASSET_INFO, "w") as f:
+        json.dump({"files": count, "bytes": total}, f)
     print(f"✓ {count} dosya -> assets/qemu-runtime.zip ({os.path.getsize(ASSET_ZIP) // (1 << 20)} MB)")
 
 

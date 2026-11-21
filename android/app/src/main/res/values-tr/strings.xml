@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notif_channel">Sanal makine</string>
+    <string name="notif_starting">Başlatılıyor…</string>
+    <string name="notif_running">%1$s çalışıyor</string>
+    <string name="notif_stop">Kapat</string>
+</resources>

@@ -1,9 +1,22 @@
-.gradle/
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
 build/
-local.properties
-.idea/
 *.iml
+.idea/
 .DS_Store
+
+# Android
+android/.gradle/
+android/local.properties
+android/gradlew
+android/gradlew.bat
+android/gradle/wrapper/gradle-wrapper.jar
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
 # Script ile indirilen büyük dosyalar (CI her seferinde yeniden indirir)
-app/src/main/jniLibs/arm64-v8a/*.so
-app/src/main/assets/qemu-runtime.zip
+android/app/src/main/jniLibs/arm64-v8a/*.so
+android/app/src/main/assets/qemu-runtime.zip
+android/app/src/main/assets/qemu-runtime.json

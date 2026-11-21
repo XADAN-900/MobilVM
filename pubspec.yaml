@@ -1,0 +1,14 @@
+name: strata_vm
+description: Strata VM — run 16, 32 and 64-bit x86 operating systems on Android.
+publish_to: "none"
+version: 1.0.0+2
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
