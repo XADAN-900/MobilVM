@@ -42,7 +42,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
   late MouseMode _mode;
   Offset _cursor = Offset.zero;
   bool _toolbar = true;
-  Timer? _hideTimer;
   bool _keyBar = false;
   bool _paused = false;
   bool _landscape = false;
@@ -78,7 +77,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
     Backend.fire('keepScreenOn', {'on': true});
     _sub = app.events.listen(_onEvent);
     _attach();
-    _scheduleHide();
     _statsTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollStats());
     _pollStats();
   }
@@ -107,7 +105,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
   @override
   void dispose() {
     _sub?.cancel();
-    _hideTimer?.cancel();
     _longTimer?.cancel();
     _statsTimer?.cancel();
     _releaseSticky();
@@ -486,22 +483,14 @@ class _DisplayScreenState extends State<DisplayScreen> {
       _txtFocus.requestFocus();
       SystemChannels.textInput.invokeMethod('TextInput.show');
     }
-    _scheduleHide();
   }
 
   // ================================================================ araç çubuğu
 
-  void _scheduleHide() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) setState(() => _toolbar = false);
-    });
-  }
+  // Araç çubuğu süreyle kaybolmaz; kullanıcı kendisi açar/kapatır.
+  void _showToolbar() => setState(() => _toolbar = true);
 
-  void _showToolbar() {
-    setState(() => _toolbar = true);
-    _scheduleHide();
-  }
+  void _hideToolbar() => setState(() => _toolbar = false);
 
   Future<void> _qmp(String cmd, [Map<String, dynamic>? args]) async {
     try {
@@ -723,15 +712,17 @@ class _DisplayScreenState extends State<DisplayScreen> {
                   right: 0,
                   child: Center(
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: _showToolbar,
                       child: Container(
                         margin: const EdgeInsets.only(top: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
+                          color: const Color(0xB3151833),
                           borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white24),
                         ),
-                        child: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 20),
+                        child: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 22),
                       ),
                     ),
                   ),
@@ -774,7 +765,6 @@ class _DisplayScreenState extends State<DisplayScreen> {
           tooltip: tip,
           onPressed: () {
             onTap();
-            _scheduleHide();
           },
           icon: Icon(i, color: active ? const Color(0xFFA5B4FC) : Colors.white),
         );
@@ -823,12 +813,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
               PopupMenuButton<String>(
                 tooltip: t('Diğer', 'More'),
                 icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-                onOpened: () => _hideTimer?.cancel(),
-                onCanceled: _scheduleHide,
-                onSelected: (a) {
-                  _menuAction(a);
-                  _scheduleHide();
-                },
+                onSelected: _menuAction,
                 itemBuilder: (_) => [
                   _mi('cad', Icons.keyboard_alt_outlined, 'Ctrl + Alt + Del'),
                   _mi('shot', Icons.photo_camera_outlined, t('Ekran görüntüsü', 'Screenshot')),
@@ -844,6 +829,12 @@ class _DisplayScreenState extends State<DisplayScreen> {
                   _mi('acpi', Icons.power_settings_new_rounded, t('Kapat (ACPI)', 'Shut down (ACPI)')),
                   _mi('kill', Icons.dangerous_outlined, t('Zorla kapat', 'Force stop')),
                 ],
+              ),
+              Container(width: 1, height: 24, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 2)),
+              IconButton(
+                tooltip: t('Menüyü gizle', 'Hide menu'),
+                onPressed: _hideToolbar,
+                icon: const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white),
               ),
             ]),
           ),
