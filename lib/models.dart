@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'os_catalog.dart';
+import 'state.dart';
 
 export 'os_catalog.dart';
 
@@ -160,3 +163,40 @@ String fmtBytes(int b) {
 
 String baseName(String path) => path.isEmpty ? '' : path.split('/').last;
 
+
+/// Seçilen dosyanın türünü tahmin eder: 'cd', 'floppy', 'disk' ya da belirsizse null.
+String? classifyMedia(String path) {
+  final n = path.toLowerCase();
+  final ext = n.contains('.') ? n.substring(n.lastIndexOf('.') + 1) : '';
+  switch (ext) {
+    case 'iso':
+    case 'cdr':
+    case 'bin':
+    case 'toast':
+      return 'cd';
+    case 'ima':
+    case 'flp':
+    case 'vfd':
+    case 'dsk':
+      return 'floppy';
+    case 'qcow2':
+    case 'qcow':
+    case 'vdi':
+    case 'vmdk':
+    case 'vhd':
+    case 'vhdx':
+      return 'disk';
+  }
+  // .img ve benzerleri: disket boyutundaysa (≤ 2.88 MB) disket
+  try {
+    final size = File(path).lengthSync();
+    if (size > 0 && size <= 2949120) return 'floppy';
+  } catch (_) {}
+  return null;
+}
+
+String mediaLabel(String kind) => switch (kind) {
+      'floppy' => t('Disket', 'Floppy'),
+      'disk' => t('Sabit disk', 'Hard disk'),
+      _ => 'CD/DVD',
+    };

@@ -67,13 +67,19 @@ class _WizardScreenState extends State<WizardScreen> {
       if (fromUser) _nameTouchedOs = true;
       _os = os;
       _family = os.family;
-      final iso = _vm.isoPath;
-      _vm = os.create()..isoPath = iso;
-      if (os.boot == 'floppy' && iso.isNotEmpty) _vm.boot = 'cd';
+      final iso = _vm.isoPath, floppy = _vm.floppyPath;
+      _vm = os.create()
+        ..isoPath = iso
+        ..floppyPath = floppy;
+      // Önyükleme: sürümün tercihi, ama yalnızca o ortam seçiliyse
+      if (os.boot == 'floppy' && floppy.isEmpty && iso.isNotEmpty) _vm.boot = 'cd';
+      if (os.boot == 'cd' && iso.isEmpty && floppy.isNotEmpty) _vm.boot = 'floppy';
       _vm.ramMb = math.min(_vm.ramMb, maxRamFor(_vm.arch));
       _vm.cpus = math.min(_vm.cpus, math.max(1, math.min(app.cores, 8)));
       _diskMb = os.diskMb == 0 ? 1024 : os.diskMb;
-      _diskMode = os.diskMb == 0 ? _DiskMode.none : _DiskMode.create;
+      if (_diskMode != _DiskMode.existing) {
+        _diskMode = os.diskMb == 0 ? _DiskMode.none : _DiskMode.create;
+      }
     });
   }
 
@@ -83,14 +89,17 @@ class _WizardScreenState extends State<WizardScreen> {
     if (d != null && d.id != _os.id) _selectOs(d);
   }
 
-  Future<void> _pickIso() async {
+  /// CD, disket veya hazır disk imajı seçer; dosya türü yanlış satıra seçildiyse doğru yere koyar.
+  Future<void> _pickMedia(String slot) async {
     try {
       final p = await app.pickFile();
       if (p == null) return;
-      setState(() {
-        _vm.isoPath = p;
-        _vm.boot = 'cd';
-      });
+      final detected = classifyMedia(p);
+      final kind = detected ?? slot;
+      setState(() => _setMedia(kind, p));
+      if (kind != slot && mounted) {
+        toast(context, '${baseName(p)} → ${mediaLabel(kind)}');
+      }
       final d = detectOs(baseName(p));
       if (d != null && !_nameTouchedOs) {
         _selectOs(d);
@@ -102,10 +111,61 @@ class _WizardScreenState extends State<WizardScreen> {
     }
   }
 
+  void _setMedia(String kind, String path) {
+    switch (kind) {
+      case 'floppy':
+        _vm.floppyPath = path;
+        if (_vm.isoPath.isEmpty || _os.boot == 'floppy') _vm.boot = 'floppy';
+        break;
+      case 'disk':
+        _existingDisk = path;
+        _diskMode = _DiskMode.existing;
+        if (_vm.isoPath.isEmpty && _vm.floppyPath.isEmpty) _vm.boot = 'disk';
+        break;
+      default:
+        _vm.isoPath = path;
+        if (_vm.floppyPath.isEmpty || _os.boot != 'floppy') _vm.boot = 'cd';
+    }
+  }
+
+  void _clearMedia(String kind) {
+    setState(() {
+      switch (kind) {
+        case 'floppy':
+          _vm.floppyPath = '';
+          break;
+        case 'disk':
+          _existingDisk = '';
+          _diskMode = _os.diskMb == 0 ? _DiskMode.none : _DiskMode.create;
+          break;
+        default:
+          _vm.isoPath = '';
+      }
+      _fixBoot();
+    });
+  }
+
+  /// Önyükleme aygıtı mevcut bir ortamı göstersin.
+  void _fixBoot() {
+    final hasDisk = _diskMode != _DiskMode.none;
+    if (_vm.boot == 'cd' && _vm.isoPath.isEmpty) {
+      _vm.boot = _vm.floppyPath.isNotEmpty ? 'floppy' : 'disk';
+    } else if (_vm.boot == 'floppy' && _vm.floppyPath.isEmpty) {
+      _vm.boot = _vm.isoPath.isNotEmpty ? 'cd' : 'disk';
+    } else if (_vm.boot == 'disk' && !hasDisk) {
+      _vm.boot = _vm.isoPath.isNotEmpty ? 'cd' : 'floppy';
+    }
+  }
+
   Future<void> _pickDisk() async {
     try {
       final p = await app.pickFile();
-      if (p != null) setState(() => _existingDisk = p);
+      if (p != null) {
+        setState(() {
+          _existingDisk = p;
+          if (_vm.isoPath.isEmpty && _vm.floppyPath.isEmpty) _vm.boot = 'disk';
+        });
+      }
     } catch (e) {
       if (mounted) toast(context, '$e');
     }
@@ -129,7 +189,7 @@ class _WizardScreenState extends State<WizardScreen> {
       } else {
         _vm.diskPath = '';
       }
-      if (_vm.isoPath.isEmpty && _vm.floppyPath.isEmpty && _vm.diskPath.isNotEmpty) _vm.boot = 'disk';
+      _fixBoot();
       final saved = await app.save(_vm);
       if (!mounted) return;
       Navigator.pop(context, saved);
@@ -244,23 +304,33 @@ class _WizardScreenState extends State<WizardScreen> {
         ),
       ]),
       const SizedBox(height: 12),
-      SectionCard(title: t('Kurulum ISO\'su (isteğe bağlı)', 'Installer ISO (optional)'), icon: Icons.album_rounded, children: [
-        Row(children: [
-          Expanded(
-            child: Text(
-              _vm.isoPath.isEmpty ? t('Seçilmedi', 'Not selected') : baseName(_vm.isoPath),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: _vm.isoPath.isEmpty ? cs.onSurfaceVariant : null),
-            ),
-          ),
-          if (_vm.isoPath.isNotEmpty)
-            IconButton(onPressed: () => setState(() => _vm.isoPath = ''), icon: const Icon(Icons.close_rounded)),
-          FilledButton.tonal(onPressed: _busy ? null : _pickIso, child: Text(t('ISO seç', 'Choose ISO'))),
-        ]),
+      SectionCard(title: t('Kurulum ortamı', 'Installation media'), icon: Icons.album_rounded, children: [
+        _mediaRow('cd', Icons.album_rounded, t('CD / DVD imajı', 'CD / DVD image'), 'ISO, BIN, IMG', _vm.isoPath),
+        _mediaRow('floppy', Icons.sd_card_rounded, t('Disket imajı', 'Floppy image'), 'IMG, IMA, FLP, VFD', _vm.floppyPath),
+        _mediaRow('disk', Icons.save_rounded, t('Hazır sabit disk imajı', 'Ready-made hard disk image'),
+            'IMG, QCOW2, VDI, VMDK, VHD', _existingDisk),
         const SizedBox(height: 6),
-        Text(t('ISO adından sistem türü otomatik algılanır.', 'The OS type is detected from the ISO name.'),
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        Text(
+          t('Hepsi isteğe bağlı. Dosya türü otomatik tanınır; ISO/dosya adından sistem de algılanır.',
+              'All optional. The file type is recognized automatically; the OS is detected from the file name.'),
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+        if ([_vm.isoPath, _vm.floppyPath, _existingDisk].where((p) => p.isNotEmpty).length > 1) ...[
+          const SizedBox(height: 12),
+          Text(t('Önyükleme', 'Boot from'), style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 6),
+          SegmentedButton<String>(
+            segments: [
+              if (_vm.isoPath.isNotEmpty) const ButtonSegment(value: 'cd', icon: Icon(Icons.album_rounded), label: Text('CD')),
+              if (_vm.floppyPath.isNotEmpty)
+                ButtonSegment(value: 'floppy', icon: const Icon(Icons.sd_card_rounded), label: Text(t('Disket', 'Floppy'))),
+              if (_existingDisk.isNotEmpty)
+                const ButtonSegment(value: 'disk', icon: Icon(Icons.save_rounded), label: Text('Disk')),
+            ],
+            selected: {_vm.boot},
+            onSelectionChanged: (x) => setState(() => _vm.boot = x.first),
+          ),
+        ],
       ]),
       const SizedBox(height: 12),
       SectionCard(title: t('İşletim sistemi', 'Operating system'), icon: Icons.computer_rounded, children: [
@@ -306,6 +376,45 @@ class _WizardScreenState extends State<WizardScreen> {
         _OsPreview(os: _os),
       ]),
     ];
+  }
+
+  Widget _mediaRow(String kind, IconData icon, String title, String formats, String path) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(0.35),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(children: [
+          Icon(icon, color: path.isEmpty ? cs.onSurfaceVariant : cs.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                path.isEmpty ? formats : baseName(path),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: path.isEmpty ? cs.onSurfaceVariant : cs.primary),
+              ),
+            ]),
+          ),
+          if (path.isNotEmpty)
+            IconButton(
+              tooltip: t('Kaldır', 'Remove'),
+              icon: const Icon(Icons.close_rounded, size: 20),
+              onPressed: () => _clearMedia(kind),
+            ),
+          TextButton(
+            onPressed: _busy ? null : () => _pickMedia(kind),
+            child: Text(path.isEmpty ? t('Seç', 'Choose') : t('Değiştir', 'Change')),
+          ),
+        ]),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------- 2
@@ -466,7 +575,8 @@ class _WizardScreenState extends State<WizardScreen> {
             row(t('İşlemci', 'CPU'), '${_vm.cpus} ${t('çekirdek', 'cores')}'),
             row(t('Ekran kartı', 'Graphics'), _vm.vga),
             row(t('Ağ', 'Network'), _vm.net ? 'NAT · ${_vm.nic}' : t('Kapalı', 'Off')),
-            row('ISO', _vm.isoPath.isEmpty ? '—' : baseName(_vm.isoPath)),
+            row('CD / DVD', _vm.isoPath.isEmpty ? '—' : baseName(_vm.isoPath)),
+            row(t('Disket', 'Floppy'), _vm.floppyPath.isEmpty ? '—' : baseName(_vm.floppyPath)),
             row(
               t('Disk', 'Disk'),
               switch (_diskMode) {
@@ -475,6 +585,7 @@ class _WizardScreenState extends State<WizardScreen> {
                 _DiskMode.none => '—',
               },
             ),
+            row(t('Önyükleme', 'Boot from'), mediaLabel(_vm.boot == 'disk' ? 'disk' : _vm.boot)),
           ]),
         ),
       ),

@@ -114,10 +114,28 @@ class _EditorScreenState extends State<EditorScreen> {
     if (v.ramMb > _maxRam) v.ramMb = _ramSteps.lastWhere((s) => s <= _maxRam);
   }
 
-  Future<void> _pick(void Function(String) set) async {
+  /// Dosyayı seçer; türü farklıysa (ör. ISO satırına disket) doğru yere koyar.
+  Future<void> _pickInto(String slot) async {
     try {
       final p = await app.pickFile();
-      if (p != null) setState(() => set(p));
+      if (p == null) return;
+      final kind = classifyMedia(p) ?? slot;
+      setState(() {
+        switch (kind) {
+          case 'floppy':
+            v.floppyPath = p;
+            if (v.isoPath.isEmpty) v.boot = 'floppy';
+            break;
+          case 'disk':
+            v.diskPath = p;
+            if (v.isoPath.isEmpty && v.floppyPath.isEmpty) v.boot = 'disk';
+            break;
+          default:
+            v.isoPath = p;
+            v.boot = 'cd';
+        }
+      });
+      if (kind != slot && mounted) toast(context, '${baseName(p)} → ${mediaLabel(kind)}');
     } catch (e) {
       if (mounted) toast(context, '${t('Dosya alınamadı', 'Could not import file')}: $e');
     }
@@ -366,31 +384,28 @@ class _EditorScreenState extends State<EditorScreen> {
           SectionCard(title: t('Depolama', 'Storage'), icon: Icons.storage_rounded, children: [
             _mediaTile(
               Icons.album_rounded,
-              t('CD / DVD (ISO)', 'CD / DVD (ISO)'),
+              t('CD / DVD (ISO, BIN, IMG)', 'CD / DVD (ISO, BIN, IMG)'),
               v.isoPath,
               [
-                _act(t('Seç', 'Choose'), () => _pick((p) {
-                      v.isoPath = p;
-                      v.boot = 'cd';
-                    })),
+                _act(t('Seç', 'Choose'), () => _pickInto('cd')),
               ],
               () => setState(() => v.isoPath = ''),
             ),
             _mediaTile(
               Icons.save_rounded,
-              t('Sabit disk', 'Hard disk'),
+              t('Sabit disk (IMG, QCOW2, VDI, VMDK, VHD)', 'Hard disk (IMG, QCOW2, VDI, VMDK, VHD)'),
               v.diskPath,
               [
                 _act(t('Yeni', 'New'), _createDisk),
-                _act(t('Seç', 'Choose'), () => _pick((p) => v.diskPath = p)),
+                _act(t('Seç', 'Choose'), () => _pickInto('disk')),
               ],
               () => setState(() => v.diskPath = ''),
             ),
             _mediaTile(
               Icons.sd_card_rounded,
-              t('Disket', 'Floppy'),
+              t('Disket (IMG, IMA, FLP, VFD)', 'Floppy (IMG, IMA, FLP, VFD)'),
               v.floppyPath,
-              [_act(t('Seç', 'Choose'), () => _pick((p) => v.floppyPath = p))],
+              [_act(t('Seç', 'Choose'), () => _pickInto('floppy'))],
               () => setState(() => v.floppyPath = ''),
             ),
             SwitchListTile(
