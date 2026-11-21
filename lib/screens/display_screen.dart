@@ -10,6 +10,7 @@ import '../models.dart';
 import '../state.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
+import '../widgets/media_picker.dart';
 
 enum MouseMode { touch, trackpad }
 
@@ -514,7 +515,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
         }
         break;
       case 'cd':
-        final p = await app.pickFile();
+        final p = await chooseMedia(context, 'cd', vmId: widget.vm.id);
         if (p != null) {
           await Backend.call('changeCd', {'path': p}).catchError((e) {
             if (mounted) toast(context, '$e');

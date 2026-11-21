@@ -184,6 +184,11 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                     bg(r, () -> cloneDisk(path, name));
                     break;
                 }
+                case "replaceImage": {
+                    String path = call.argument("path");
+                    bg(r, () -> replaceImage(path));
+                    break;
+                }
                 case "listImages": r.success(listImages()); break;
                 case "deleteImage": r.success(deleteImageFile(call.argument("path"))); break;
 
@@ -411,6 +416,65 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
             throw new IllegalStateException(((String) res[1]).trim());
         }
         return f.getPath();
+    }
+
+    /**
+     * "Dosya (3).iso" gibi yeni bir kopyayı eski sürümlerin ("Dosya.iso", "Dosya (2).iso") yerine koyar:
+     * eskiler silinir, yeni dosya temel ada taşınır, onları kullanan VM'ler yeni dosyayı gösterir.
+     */
+    private Object replaceImage(String newPath) throws Exception {
+        File dir = QemuEnv.imagesDir(ctx).getCanonicalFile();
+        File nf = new File(newPath).getCanonicalFile();
+        if (!dir.equals(nf.getParentFile()) || !nf.exists()) throw new IllegalStateException("not in library");
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(.*) \\((\\d+)\\)(\\.[^.]*)?$").matcher(nf.getName());
+        if (!m.matches()) return nf.getPath();
+        String stem = m.group(1);
+        String ext = m.group(3) == null ? "" : m.group(3);
+        java.util.regex.Pattern sib = java.util.regex.Pattern.compile(
+                "^" + java.util.regex.Pattern.quote(stem) + "( \\(\\d+\\))?" + java.util.regex.Pattern.quote(ext) + "$");
+        File base = new File(dir, stem + ext);
+
+        List<String> oldPaths = new ArrayList<>();
+        File[] all = dir.listFiles();
+        if (all != null) {
+            for (File f : all) {
+                if (f.isFile() && !f.equals(nf) && sib.matcher(f.getName()).matches()) oldPaths.add(f.getPath());
+            }
+        }
+        // Çalışan VM eski dosyalardan birini kullanıyorsa dokunma
+        String running = VmService.runningId();
+        if (running != null) {
+            VmConfig rv = Store.getVm(ctx, running);
+            if (rv != null && (oldPaths.contains(canon(rv.isoPath)) || oldPaths.contains(canon(rv.floppyPath))
+                    || oldPaths.contains(canon(rv.diskPath)))) {
+                throw new IllegalStateException("IN_USE_RUNNING");
+            }
+        }
+        for (String p : oldPaths) {
+            //noinspection ResultOfMethodCallIgnored
+            new File(p).delete();
+        }
+        if (!nf.renameTo(base)) throw new IllegalStateException("rename failed");
+
+        String target = base.getPath();
+        List<VmConfig> vms = Store.loadVms(ctx);
+        boolean changed = false;
+        for (VmConfig v : vms) {
+            if (oldPaths.contains(canon(v.isoPath)) || canon(v.isoPath).equals(nf.getPath())) { v.isoPath = target; changed = true; }
+            if (oldPaths.contains(canon(v.floppyPath)) || canon(v.floppyPath).equals(nf.getPath())) { v.floppyPath = target; changed = true; }
+            if (oldPaths.contains(canon(v.diskPath)) || canon(v.diskPath).equals(nf.getPath())) { v.diskPath = target; changed = true; }
+        }
+        if (changed) Store.saveVms(ctx, vms);
+        return target;
+    }
+
+    private static String canon(String p) {
+        if (p == null || p.isEmpty()) return "";
+        try {
+            return new File(p).getCanonicalPath();
+        } catch (Exception e) {
+            return p;
+        }
     }
 
     private List<Object> listImages() {

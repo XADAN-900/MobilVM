@@ -6,6 +6,7 @@ import '../backend.dart';
 import '../models.dart';
 import '../state.dart';
 import '../widgets/common.dart';
+import '../widgets/media_picker.dart';
 
 const ramSteps = [8, 16, 32, 64, 128, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384];
 const diskSteps = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 12288, 16384, 20480, 32768, 40960, 65536, 131072, 262144];
@@ -99,8 +100,8 @@ class _WizardScreenState extends State<WizardScreen> {
   /// CD, disket veya hazır disk imajı seçer; dosya türü yanlış satıra seçildiyse doğru yere koyar.
   Future<void> _pickMedia(String slot) async {
     try {
-      final p = await app.pickFile();
-      if (p == null) return;
+      final p = await chooseMedia(context, slot);
+      if (p == null || !mounted) return;
       final detected = classifyMedia(p);
       final kind = detected ?? slot;
       setState(() => _setMedia(kind, p));
@@ -202,8 +203,8 @@ class _WizardScreenState extends State<WizardScreen> {
 
   Future<void> _pickDisk() async {
     try {
-      final p = await app.pickFile();
-      if (p != null) {
+      final p = await chooseMedia(context, 'disk');
+      if (p != null && mounted) {
         setState(() {
           _existingDisk = p;
           if (_vm.isoPath.isEmpty && _vm.floppyPath.isEmpty) _vm.boot = 'disk';

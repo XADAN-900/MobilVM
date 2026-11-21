@@ -6,6 +6,7 @@ import '../backend.dart';
 import '../models.dart';
 import '../state.dart';
 import '../widgets/common.dart';
+import '../widgets/media_picker.dart';
 import 'wizard_screen.dart' show ramSteps, diskSteps;
 
 const _ramSteps = ramSteps;
@@ -117,8 +118,8 @@ class _EditorScreenState extends State<EditorScreen> {
   /// Dosyayı seçer; türü farklıysa (ör. ISO satırına disket) doğru yere koyar.
   Future<void> _pickInto(String slot) async {
     try {
-      final p = await app.pickFile();
-      if (p == null) return;
+      final p = await chooseMedia(context, slot, vmId: v.id.isEmpty ? null : v.id);
+      if (p == null || !mounted) return;
       final kind = classifyMedia(p) ?? slot;
       setState(() {
         switch (kind) {
