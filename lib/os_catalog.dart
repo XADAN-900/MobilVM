@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -234,7 +236,15 @@ OsType? detectOs(String text) {
   if (has(r'netbsd')) return osById('netbsd');
   if (has(r'haiku')) return osById('haiku');
   if (has(r'kolibri')) return osById('kolibri');
-  if (has(r'(linux|centos|rocky|alma|opensuse|manjaro|kali|slax|puppy|gentoo|void)')) {
+  if (has(r'(linux|pardus|pisi|centos|rocky|alma|rhel|opensuse|suse|manjaro|endeavour|garuda|artix|kali|parrot|'
+      r'tails|zorin|pop[-_ ]?os|elementary|mx[-_ ]?\d|mxlinux|peppermint|bodhi|deepin|slackware|gentoo|void|'
+      r'nixos|solus|puppy|fossapup|slax|porteus|slitaz|knoppix|q4os|devuan|mageia|pclinuxos|sparky|lxle|kodachi|'
+      r'whonix|android[-_ ]?x86|bliss|primeos|steamos|lakka|batocera|recalbox|clonezilla|gparted|systemrescue|'
+      r'rescuezilla|hiren|lite[-_ ]?\d|vanilla|nobara|kaos|chakra|elive|trisquel|pureos|kubuntu|xubuntu|lubuntu|'
+      r'ubuntu|budgie|mate|xfce|kde|gnome|cinnamon|live[-_]?cd|livecd|\bdsl\b|damn[-_ ]?small)')) {
+    if (has(r'(ubuntu|zorin|pop[-_ ]?os|elementary|kubuntu|xubuntu|lubuntu|budgie)')) return osById('ubuntu');
+    if (has(r'(manjaro|endeavour|garuda|artix)')) return osById('arch');
+    if (has(r'(\bdsl\b|damn[-_ ]?small|puppy|slitaz|porteus|slax)')) return osById('linux32');
     return osById(is32 ? 'linux32' : 'linux64');
   }
   return null;
@@ -265,6 +275,9 @@ Future<OsDetection?> detectOsFromFile(String path) async {
           final label = String.fromCharCodes(pvd.sublist(40, 72)).trim();
           final os = _detectFromIsoLabel(label);
           if (os != null) return OsDetection(os, label);
+          // Etiket bir şey söylemiyor: ISO'nun içindeki klasör ve dosyalara bak
+          final byContent = await _IsoScanner(f).detect();
+          if (byContent != null) return byContent;
         }
       }
       // Disket / FAT önyükleme kesimi: OEM adı (3..11) ve birim etiketi (43..54)
@@ -309,4 +322,125 @@ OsType? _detectFromBootSector(String oem, String vol) {
   if (oem.startsWith('MSWIN4')) return osById('win98');
   if (oem.startsWith('MSDOS') || oem.startsWith('IBM')) return osById('msdos');
   return detectOs(vol);
+}
+
+/// ISO 9660 dosya sistemini okuyup içeriğe göre sistemi tahmin eder.
+class _IsoScanner {
+  _IsoScanner(this.f);
+  final RandomAccessFile f;
+
+  Future<Uint8List> _read(int pos, int len) async {
+    await f.setPosition(pos);
+    return f.read(len);
+  }
+
+  static int _u32(Uint8List b, int o) => b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24);
+
+  /// Bir dizindeki girdiler: küçük harfli ad -> (lba, boyut, klasör mü)
+  Future<Map<String, (int, int, bool)>> _dir(int lba, int size) async {
+    final out = <String, (int, int, bool)>{};
+    final data = await _read(lba * 2048, math.min(size, 128 * 1024));
+    var i = 0;
+    while (i < data.length) {
+      final len = data[i];
+      if (len == 0) {
+        i = ((i ~/ 2048) + 1) * 2048; // sektör sonu dolgusu
+        continue;
+      }
+      if (len < 34 || i + len > data.length) break;
+      final nameLen = data[i + 32];
+      if (i + 33 + nameLen <= data.length && nameLen > 0) {
+        final nb = data.sublist(i + 33, i + 33 + nameLen);
+        if (!(nameLen == 1 && (nb[0] == 0 || nb[0] == 1))) {
+          var name = String.fromCharCodes(nb).split(';').first.toLowerCase();
+          if (name.endsWith('.')) name = name.substring(0, name.length - 1);
+          out[name] = (_u32(data, i + 2), _u32(data, i + 10), (data[i + 25] & 2) != 0);
+        }
+      }
+      i += len;
+    }
+    return out;
+  }
+
+  Future<OsDetection?> detect() async {
+    try {
+      final pvd = await _read(32768, 2048);
+      final root = await _dir(_u32(pvd, 156 + 2), _u32(pvd, 156 + 10));
+      if (root.isEmpty) return null;
+      final names = <String>{...root.keys};
+
+      Future<Map<String, (int, int, bool)>> sub(String n) async {
+        final e = root[n];
+        if (e == null || !e.$3) return {};
+        final d = await _dir(e.$1, e.$2);
+        names.addAll(d.keys);
+        return d;
+      }
+
+      // 1) Debian/Ubuntu tabanlılar: .disk/info dosyasında tam ad yazar ("Pardus 23.1 ...", "Linux Mint 21 ...")
+      for (final dn in ['.disk', '_disk', 'disk']) {
+        final d = await sub(dn);
+        final info = d['info'];
+        if (info != null && !info.$3) {
+          final txt = String.fromCharCodes(await _read(info.$1 * 2048, math.min(info.$2, 512))).trim();
+          final title = txt.split('\n').first.trim();
+          final ubuntuBased = root.containsKey('casper') || RegExp(r'ubuntu|mint|zorin|pop|elementary', caseSensitive: false).hasMatch(txt);
+          var os = detectOs(txt);
+          // Tanınan ama genel "Linux" çıkan dağıtımlarda tabanın profilini kullan
+          if (os == null || os.id == 'linux64' || os.id == 'linux32') {
+            final is32 = _is32(txt) && !_is64(txt);
+            os = osById(ubuntuBased ? 'ubuntu' : (is32 ? 'debian32' : 'debian'));
+          }
+          final base = ubuntuBased ? t('Ubuntu tabanlı', 'Ubuntu based') : t('Debian tabanlı', 'Debian based');
+          return OsDetection(os, '$title · $base');
+        }
+      }
+
+      // 2) Windows kurulum diskleri (Vista ve sonrası): EFI klasöründe bootx64.efi varsa 64-bit
+      if (root.containsKey('sources') && (root.containsKey('bootmgr') || root.containsKey('setup.exe'))) {
+        var x64 = false;
+        final efi = await sub('efi');
+        final boot = efi['boot'];
+        if (boot != null && boot.$3) {
+          x64 = (await _dir(boot.$1, boot.$2)).containsKey('bootx64.efi');
+        }
+        return OsDetection(osById(x64 ? 'win10' : 'win10_32'), 'Windows Setup (${x64 ? '64' : '32'}-bit)');
+      }
+      if (root.containsKey('i386') && names.any((n) => n.startsWith('win51'))) return OsDetection(osById('winxp'), 'WIN51');
+      if (root.containsKey('win98') || root.containsKey('win9x')) return OsDetection(osById('win98'), 'WIN98');
+      if (root.containsKey('win95')) return OsDetection(osById('win95'), 'WIN95');
+      if (root.containsKey('freedos')) return OsDetection(osById('freedos'), 'FREEDOS');
+
+      // 3) Linux: önyükleyici ve çekirdek klasörlerine bak
+      for (final dn in ['boot', 'isolinux', 'syslinux', 'casper', 'live', 'arch', 'liveos', 'images', 'install', 'install.amd', 'install.386', 'install_amd', 'install_386']) {
+        await sub(dn);
+      }
+      final all = names.join(' ');
+      final linuxy = RegExp(r'(isolinux|syslinux|casper|\blive\b|vmlinuz|initrd|bzimage|grub|liveos|\barch\b|'
+              r'core\.gz|tinycore|apks|antix|kernel|pmagic|sysrcd|boot\.cat)')
+          .hasMatch(all);
+      if (!linuxy) return null;
+      final is32only = _is32(all) && !_is64(all);
+      if (root.containsKey('apks')) return OsDetection(osById('alpine'), t('Alpine tabanlı', 'Alpine based'));
+      if (root.containsKey('casper')) return OsDetection(osById('ubuntu'), t('Ubuntu tabanlı', 'Ubuntu based'));
+      if (root.containsKey('arch')) return OsDetection(osById('arch'), t('Arch tabanlı', 'Arch based'));
+      if (root.containsKey('liveos') || (root.containsKey('images') && names.contains('install.img'))) {
+        return OsDetection(osById('fedora'), t('Fedora / Red Hat tabanlı', 'Fedora / Red Hat based'));
+      }
+      final deb32 = root.containsKey('install.386') || root.containsKey('install_386');
+      if (root.containsKey('live') || root.containsKey('install.amd') || root.containsKey('install_amd') || deb32) {
+        return OsDetection(osById(is32only || deb32 ? 'debian32' : 'debian'),
+            t('Debian tabanlı', 'Debian based'));
+      }
+      if (root.containsKey('antix')) return OsDetection(osById('antix'), 'antiX');
+      if (names.contains('core.gz') || names.contains('tinycore.gz')) return OsDetection(osById('tinycore'), 'Tiny Core');
+      if (names.contains('loader') && root.containsKey('rescue')) return OsDetection(osById('freebsd'), 'FreeBSD');
+      return OsDetection(osById(is32only ? 'linux32' : 'linux64'), t('Linux (genel)', 'Linux (generic)'));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _is64(String s) => RegExp(r'(x86_64|amd64|x64|vmlinuz64|64[-_ ]?bit|efi)').hasMatch(s.toLowerCase());
+  static bool _is32(String s) => RegExp(r'(i[3-6]86|x86(?!_64)|32[-_ ]?bit)').hasMatch(s.toLowerCase());
 }

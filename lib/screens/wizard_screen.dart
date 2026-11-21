@@ -39,8 +39,8 @@ enum _DiskMode { create, existing, none }
 class _WizardScreenState extends State<WizardScreen> {
   int _step = 0;
   final _name = TextEditingController();
-  String _family = 'windows';
-  OsType _os = osById('winxp');
+  String _family = 'other';
+  OsType _os = osById('custom');
   bool _nameTouchedOs = false; // kullanıcı sürümü elle seçtiyse addan tahmin etme
   bool _autoName = true; // ad otomatik mi dolduruldu (kullanıcı yazmadı)
   String? _detectNote; // "ISO etiketinden algılandı: ..."
