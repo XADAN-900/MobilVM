@@ -116,6 +116,55 @@ Future<_KernelInfo?> _kernelInfo(_Reader r, int pos, int size) async {
 
 // ===================================================================== ISO
 
+/// ISO 9660 dizin kaydı: ad (Rock Ridge varsa gerçek uzun ad), konum, boyut.
+class IsoEntry {
+  IsoEntry(this.name, this.lba, this.size, this.dir);
+  final String name; // küçük harf
+  final int lba;
+  final int size;
+  final bool dir;
+}
+
+/// Bir dizin bloğunu çözer. Rock Ridge "NM" kaydı varsa uzun adı kullanır
+/// (ör. 8.3 "FILESYST.SQU" yerine "filesystem.squashfs").
+List<IsoEntry> parseIsoDir(Uint8List data) {
+  final out = <IsoEntry>[];
+  var i = 0;
+  while (i < data.length) {
+    final len = data[i];
+    if (len == 0) {
+      i = ((i ~/ 2048) + 1) * 2048;
+      continue;
+    }
+    if (len < 34 || i + len > data.length) break;
+    final nameLen = data[i + 32];
+    if (nameLen > 0 && i + 33 + nameLen <= i + len) {
+      final nb = data.sublist(i + 33, i + 33 + nameLen);
+      if (!(nameLen == 1 && (nb[0] == 0 || nb[0] == 1))) {
+        var name = String.fromCharCodes(nb).split(';').first;
+        if (name.endsWith('.')) name = name.substring(0, name.length - 1);
+        // Rock Ridge: sistem kullanım alanındaki NM kayıtları
+        var su = i + 33 + nameLen + (nameLen.isEven ? 1 : 0);
+        final end = i + len;
+        final rr = StringBuffer();
+        while (su + 4 <= end) {
+          final sl = data[su + 2];
+          if (sl < 4 || su + sl > end) break;
+          if (data[su] == 0x4E && data[su + 1] == 0x4D && sl > 5) {
+            final flags = data[su + 4];
+            if ((flags & 0x06) == 0) rr.write(String.fromCharCodes(data.sublist(su + 5, su + sl)));
+          }
+          su += sl;
+        }
+        if (rr.isNotEmpty) name = rr.toString();
+        out.add(IsoEntry(name.toLowerCase(), _u32(data, i + 2), _u32(data, i + 10), (data[i + 25] & 2) != 0));
+      }
+    }
+    i += len;
+  }
+  return out;
+}
+
 class _IsoFile {
   _IsoFile(this.path, this.lba, this.size, this.dir);
   final String path; // küçük harf, "boot/grub/grub.cfg"
@@ -133,27 +182,10 @@ Future<List<_IsoFile>> _walkIso(_Reader r) async {
     final (prefix, lba, size, depth) = queue.removeAt(0);
     if (!seen.add(lba)) continue;
     final data = await r.read(lba * 2048, math.min(size, 256 * 1024));
-    var i = 0;
-    while (i < data.length) {
-      final len = data[i];
-      if (len == 0) {
-        i = ((i ~/ 2048) + 1) * 2048;
-        continue;
-      }
-      if (len < 34 || i + len > data.length) break;
-      final nameLen = data[i + 32];
-      if (nameLen > 0 && i + 33 + nameLen <= data.length) {
-        final nb = data.sublist(i + 33, i + 33 + nameLen);
-        if (!(nameLen == 1 && (nb[0] == 0 || nb[0] == 1))) {
-          var name = String.fromCharCodes(nb).split(';').first.toLowerCase();
-          if (name.endsWith('.')) name = name.substring(0, name.length - 1);
-          final isDir = (data[i + 25] & 2) != 0;
-          final f = _IsoFile(prefix + name, _u32(data, i + 2), _u32(data, i + 10), isDir);
-          out.add(f);
-          if (isDir && depth < 5) queue.add(('${f.path}/', f.lba, f.size, depth + 1));
-        }
-      }
-      i += len;
+    for (final e in parseIsoDir(data)) {
+      final f = _IsoFile(prefix + e.name, e.lba, e.size, e.dir);
+      out.add(f);
+      if (e.dir && depth < 5) queue.add(('${f.path}/', f.lba, f.size, depth + 1));
     }
   }
   return out;

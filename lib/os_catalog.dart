@@ -448,28 +448,8 @@ class _IsoScanner {
 
   /// Bir dizindeki girdiler: küçük harfli ad -> (lba, boyut, klasör mü)
   Future<Map<String, (int, int, bool)>> _dir(int lba, int size) async {
-    final out = <String, (int, int, bool)>{};
     final data = await _read(lba * 2048, math.min(size, 128 * 1024));
-    var i = 0;
-    while (i < data.length) {
-      final len = data[i];
-      if (len == 0) {
-        i = ((i ~/ 2048) + 1) * 2048; // sektör sonu dolgusu
-        continue;
-      }
-      if (len < 34 || i + len > data.length) break;
-      final nameLen = data[i + 32];
-      if (i + 33 + nameLen <= data.length && nameLen > 0) {
-        final nb = data.sublist(i + 33, i + 33 + nameLen);
-        if (!(nameLen == 1 && (nb[0] == 0 || nb[0] == 1))) {
-          var name = String.fromCharCodes(nb).split(';').first.toLowerCase();
-          if (name.endsWith('.')) name = name.substring(0, name.length - 1);
-          out[name] = (_u32(data, i + 2), _u32(data, i + 10), (data[i + 25] & 2) != 0);
-        }
-      }
-      i += len;
-    }
-    return out;
+    return {for (final e in parseIsoDir(data)) e.name: (e.lba, e.size, e.dir)};
   }
 
   Future<OsDetection?> detect() async {
@@ -484,8 +464,12 @@ class _IsoScanner {
         if (e == null || !e.$3) return {};
         final d = await _dir(e.$1, e.$2);
         names.addAll(d.keys);
+        // Canlı sistem dosyası: adı squashfs olan ya da canlı klasörlerdeki en büyük dosya
+        final liveDir = const ['live', 'casper', 'liveos', 'arch'].contains(n);
         for (final x in d.entries) {
-          if (!x.value.$3 && RegExp(r'(\.squashfs|\.sfs|squashfs\.img|\.erofs)$').hasMatch(x.key)) {
+          if (x.value.$3) continue;
+          if (RegExp(r'(\.squashfs|\.sfs|squashfs\.img|\.erofs|\.squ)$').hasMatch(x.key) ||
+              (liveDir && x.value.$2 > (64 << 20))) {
             squashBytes = math.max(squashBytes, x.value.$2);
           }
         }
