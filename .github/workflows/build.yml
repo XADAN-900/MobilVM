@@ -1,0 +1,50 @@
+name: APK derle
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: QEMU'yu Termux deposundan indir
+        run: python3 scripts/fetch_qemu_termux.py
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: APK derle
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: APK'yı adlandır
+        run: cp app/build/outputs/apk/debug/app-debug.apk MobilVM.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MobilVM-debug-apk
+          path: MobilVM.apk
+
+      # Telefondan kolay indirmek için: Releases > "son-surum" > MobilVM.apk
+      - name: Son sürümü yayınla
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete son-surum --yes --cleanup-tag || true
+          gh release create son-surum MobilVM.apk --title "MobilVM (son derleme)" \
+            --notes "Otomatik derleme: ${GITHUB_SHA::7}" --target "$GITHUB_SHA"
