@@ -103,6 +103,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     (s['tbSize'] as num?)?.toInt() ?? 256,
                     {128: '128 MB', 256: '256 MB', 512: '512 MB'},
                     (v) => app.setSetting('tbSize', v)),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: s['mttcg'] != false,
+                  onChanged: (v) => app.setSetting('mttcg', v),
+                  title: Text(t('Çok çekirdekli emülasyon', 'Multi-core emulation')),
+                  subtitle: Text(t('Birden fazla çekirdekli VM\'lerde her çekirdek ayrı işlemci çekirdeğinde çalışır (çok daha hızlı)',
+                      'Each virtual core runs on its own phone core for multi-core VMs (much faster)')),
+                ),
                 Text(
                   t('Telefonlarda x86 donanım sanallaştırması yok; komutlar yazılımla çevrilir. '
                       'DOS, Win 9x/XP ve hafif Linux akıcıdır; ağır sistemler yavaştır.',

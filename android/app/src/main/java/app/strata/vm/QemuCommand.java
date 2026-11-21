@@ -38,7 +38,9 @@ final class QemuCommand {
         add(a, "-cpu", vm.cpuModel.trim().isEmpty() ? defaultCpu(vm.arch) : vm.cpuModel.trim());
         add(a, "-m", String.valueOf(Math.max(4, vm.ramMb)));
         add(a, "-smp", String.valueOf(Math.max(1, vm.cpus)));
-        add(a, "-accel", "tcg,tb-size=" + tb);
+        // Çok çekirdekli TCG: her sanal çekirdek ayrı iş parçacığında (x86 bellek sıralaması QEMU tarafından korunur)
+        boolean mttcg = vm.cpus > 1 && Store.settingBool(c, "mttcg", true);
+        add(a, "-accel", "tcg,tb-size=" + tb + (mttcg ? ",thread=multi" : ""));
         if (!vm.vga.isEmpty()) add(a, "-vga", vm.vga);
 
         // UEFI (OVMF/edk2): kod salt okunur, değişkenler VM'e özel kopyada

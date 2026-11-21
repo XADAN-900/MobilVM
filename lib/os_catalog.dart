@@ -263,8 +263,36 @@ class OsDetection {
   final String? boot; // cd | floppy | disk
   final List<String> findings;
 
+  /// Ürünün kendi adı (ör. ISO etiketi "TyrOS 1.0"); VM adı olarak kullanılır.
+  final String? productName;
+
+  /// İçerik büyüklüğüne göre önerilen en az RAM (MB), ör. büyük masaüstü canlı sistemleri.
+  final int? ramHint;
+
   const OsDetection(this.os, this.source,
-      {this.custom = false, this.uefi = false, this.boot, this.findings = const []});
+      {this.custom = false,
+      this.uefi = false,
+      this.boot,
+      this.findings = const [],
+      this.productName,
+      this.ramHint});
+
+  /// VM için önerilen ad: türetilmiş dağıtımlarda kendi adı (ör. "TyrOS 1.0"), yoksa sürüm adı.
+  String get suggestedName {
+    final p = productName?.trim() ?? '';
+    if (p.isEmpty) return os.name;
+    final key = os.name.split(RegExp(r'[ (]')).first.toLowerCase();
+    if (!custom && p.toLowerCase().contains(key)) return os.name;
+    return p.length > 40 ? p.substring(0, 40) : p;
+  }
+
+  OsDetection copyWith({String? productName, int? ramHint, List<String>? findings}) => OsDetection(os, source,
+      custom: custom,
+      uefi: uefi,
+      boot: boot,
+      findings: findings ?? this.findings,
+      productName: productName ?? this.productName,
+      ramHint: ramHint ?? this.ramHint);
 
   /// Önerilen ayarları VM'e uygular (bilinen sürüm + içerikten gelen ek bilgiler).
   void applyTo(VmConfig v) {
@@ -279,6 +307,7 @@ class OsDetection {
       v.vga = os.arch == 'x86_16' ? 'cirrus' : 'std';
     }
     if (boot != null) v.boot = boot!;
+    if (ramHint != null && v.ramMb < ramHint!) v.ramMb = ramHint!;
   }
 }
 
@@ -298,13 +327,34 @@ Future<OsDetection?> detectOsFromFile(String path) async {
         final pvd = await f.read(72);
         if (pvd.length >= 72 && String.fromCharCodes(pvd.sublist(1, 6)) == 'CD001') {
           final label = String.fromCharCodes(pvd.sublist(40, 72)).trim();
+          final scanner = _IsoScanner(f);
+          OsDetection? result;
           final os = _detectFromIsoLabel(label);
-          if (os != null) return OsDetection(os, label);
-          // Etiket bir şey söylemiyor: ISO'nun içindeki klasör ve dosyalara bak
-          final byContent = await _IsoScanner(f).detect();
-          if (byContent != null) return byContent;
+          if (os != null) result = OsDetection(os, label);
+          // ISO'nun içindeki klasör ve dosyalara bak (etiket tanıdıysa bile boyut bilgisi için taranır)
+          final scanned = await scanner.detect();
+          result ??= scanned;
           // Bilinen dağıtım değil: içini açıp çekirdeğe / önyükleyiciye bak
-          return _fromReport(await inspectIso(f, len));
+          result ??= _fromReport(await inspectIso(f, len));
+          if (result == null) return null;
+          // Okunabilir etiket ("TyrOS 1.0") ürün adıdır; büyük canlı sistem dosyası daha çok RAM ister
+          final human = RegExp(r'[a-z]').hasMatch(label) && !RegExp(r'^(CDROM|ISOIMAGE|CD_?ROM)$', caseSensitive: false).hasMatch(label);
+          final sq = scanner.squashBytes;
+          int? hint;
+          if (sq > 1500 << 20) {
+            hint = 3072;
+          } else if (sq > 700 << 20) {
+            hint = 2048;
+          }
+          final extra = <String>[
+            if (sq > 0) '${t('Canlı sistem dosyası', 'Live filesystem')}: ${(sq / (1 << 20)).round()} MB',
+            if (hint != null) '${t('Önerilen RAM', 'Recommended RAM')}: ${hint ~/ 1024} GB',
+          ];
+          return result.copyWith(
+            productName: human ? label : (scanner.productName ?? result.productName),
+            ramHint: hint,
+            findings: [...result.findings, ...extra],
+          );
         }
       }
       // Disket / FAT önyükleme kesimi: OEM adı (3..11) ve birim etiketi (43..54)
@@ -383,6 +433,12 @@ class _IsoScanner {
   _IsoScanner(this.f);
   final RandomAccessFile f;
 
+  /// En büyük canlı sistem dosyasının (squashfs) boyutu.
+  int squashBytes = 0;
+
+  /// .disk/info'dan okunan ürün adı.
+  String? productName;
+
   Future<Uint8List> _read(int pos, int len) async {
     await f.setPosition(pos);
     return f.read(len);
@@ -428,7 +484,16 @@ class _IsoScanner {
         if (e == null || !e.$3) return {};
         final d = await _dir(e.$1, e.$2);
         names.addAll(d.keys);
+        for (final x in d.entries) {
+          if (!x.value.$3 && RegExp(r'(\.squashfs|\.sfs|squashfs\.img|\.erofs)$').hasMatch(x.key)) {
+            squashBytes = math.max(squashBytes, x.value.$2);
+          }
+        }
         return d;
+      }
+      // canlı sistem dosyalarının boyutu için olası klasörler
+      for (final dn in ['live', 'casper', 'liveos', 'arch', 'boot']) {
+        await sub(dn);
       }
 
       // 1) Debian/Ubuntu tabanlılar: .disk/info dosyasında tam ad yazar ("Pardus 23.1 ...", "Linux Mint 21 ...")
@@ -438,6 +503,7 @@ class _IsoScanner {
         if (info != null && !info.$3) {
           final txt = String.fromCharCodes(await _read(info.$1 * 2048, math.min(info.$2, 512))).trim();
           final title = txt.split('\n').first.trim();
+          productName = title.split(RegExp(r'\s+')).take(2).join(' ');
           final ubuntuBased = root.containsKey('casper') || RegExp(r'ubuntu|mint|zorin|pop|elementary', caseSensitive: false).hasMatch(txt);
           var os = detectOs(txt);
           // Tanınan ama genel "Linux" çıkan dağıtımlarda tabanın profilini kullan

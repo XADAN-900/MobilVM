@@ -58,6 +58,24 @@ void main() {
     expect(d.boot, 'floppy');
   }, skip: !exists('boot32.img'));
 
+  test('live-build ile yapılmış Debian tabanlı özel dağıtım (TyrOS benzeri)', () async {
+    final d = await det('TyrOS_v1_0 (3).iso');
+    expect(d, isNotNull);
+    expect(d!.os.id, 'debian');
+    expect(d.custom, isFalse);
+    expect(d.productName, 'TyrOS 1.0');
+    expect(d.suggestedName, 'TyrOS 1.0');
+    expect(d.ramHint, 2048);
+    final v = VmConfig();
+    d.applyTo(v);
+    expect(v.ramMb, greaterThanOrEqualTo(2048));
+  }, skip: !exists('TyrOS_v1_0 (3).iso'));
+
+  test('live klasörlü, .disk bilgisi olmayan Debian tabanlı ISO', () async {
+    final d = await det('livebuild-nodisk.iso');
+    expect(d?.os.id, 'debian');
+  }, skip: !exists('livebuild-nodisk.iso'));
+
   test('gerçek Alpine ISO (anlamsız ad)', () async {
     final d = await det('mystery-a.iso');
     expect(d?.os.id, 'alpine');

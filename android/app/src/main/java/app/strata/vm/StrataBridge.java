@@ -191,6 +191,7 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                 case "stopVm": VmService.stop(Boolean.TRUE.equals(call.argument("force"))); r.success(null); break;
                 case "vmState": r.success(Events.of("running", VmService.isRunning(), "vmId", VmService.runningId())); break;
                 case "log": r.success(VmService.log()); break;
+                case "vmStats": bg(r, this::vmStats); break;
 
                 case "qmp": {
                     String cmd = call.argument("command");
@@ -375,7 +376,7 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
     private Object createDisk(String name, long sizeMb) throws Exception {
         File img = QemuEnv.bin(ctx, QemuEnv.BIN_IMG);
         if (img == null) throw new IllegalStateException("qemu-img not found");
-        String safe = (name == null || name.trim().isEmpty() ? "disk" : name).replaceAll("[^A-Za-z0-9_.-]", "_");
+        String safe = safeFileName(name, "disk");
         File f = new File(QemuEnv.imagesDir(ctx), safe + ".qcow2");
         if (f.exists()) f = new File(QemuEnv.imagesDir(ctx), safe + "-" + System.currentTimeMillis() + ".qcow2");
         Object[] res = QemuEnv.run(ctx, Arrays.asList(img.getPath(), "create", "-f", "qcow2", f.getPath(), sizeMb + "M"));
@@ -383,12 +384,23 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
         return f.getPath();
     }
 
+    /** "Linux (64-bit, diğer)" -> "Linux_64-bit_diger" */
+    static String safeFileName(String name, String def) {
+        if (name == null || name.trim().isEmpty()) return def;
+        String s = name.trim()
+                .replace('ğ', 'g').replace('Ğ', 'G').replace('ü', 'u').replace('Ü', 'U')
+                .replace('ş', 's').replace('Ş', 'S').replace('ı', 'i').replace('İ', 'I')
+                .replace('ö', 'o').replace('Ö', 'O').replace('ç', 'c').replace('Ç', 'C');
+        s = s.replaceAll("[^A-Za-z0-9.-]+", "_").replaceAll("^_+|_+$", "");
+        return s.isEmpty() ? def : s;
+    }
+
     /** Diskin bağımsız, sıkıştırılmış qcow2 kopyası (VM klonlama için). */
     private Object cloneDisk(String src, String name) throws Exception {
         File img = QemuEnv.bin(ctx, QemuEnv.BIN_IMG);
         if (img == null) throw new IllegalStateException("qemu-img not found");
         if (src == null || !new File(src).exists()) throw new IllegalStateException("disk not found");
-        String safe = (name == null || name.trim().isEmpty() ? "clone" : name).replaceAll("[^A-Za-z0-9_.-]", "_");
+        String safe = safeFileName(name, "clone");
         File f = new File(QemuEnv.imagesDir(ctx), safe + ".qcow2");
         for (int i = 2; f.exists(); i++) f = new File(QemuEnv.imagesDir(ctx), safe + "-" + i + ".qcow2");
         Object[] res = QemuEnv.run(ctx, Arrays.asList(img.getPath(), "convert", "-U", "-O", "qcow2",
@@ -431,6 +443,60 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
         } catch (Exception e) {
             return false;
         }
+    }
+
+    // ------------------------------------------------------------ canlı istatistik
+
+    private int qemuPid = -1;
+    private long lastCpuTicks = -1, lastCpuAt = 0;
+
+    /** QEMU sürecini /proc'ta bulur (aynı uygulama kullanıcısına ait süreçler görünür). */
+    private int findQemuPid() {
+        if (qemuPid > 0 && new File("/proc/" + qemuPid + "/cmdline").exists()) return qemuPid;
+        String prefix = QemuEnv.nativeDir(ctx).getPath() + "/libqemu-system";
+        File[] procs = new File("/proc").listFiles();
+        if (procs == null) return -1;
+        for (File p : procs) {
+            String n = p.getName();
+            if (!n.matches("\\d+")) continue;
+            try {
+                byte[] b = java.nio.file.Files.readAllBytes(new File(p, "cmdline").toPath());
+                if (new String(b, java.nio.charset.StandardCharsets.UTF_8).startsWith(prefix)) {
+                    qemuPid = Integer.parseInt(n);
+                    lastCpuTicks = -1;
+                    return qemuPid;
+                }
+            } catch (Exception ignored) { }
+        }
+        return -1;
+    }
+
+    private Object vmStats() throws Exception {
+        Map<String, Object> m = new HashMap<>();
+        m.put("running", VmService.isRunning());
+        long started = VmService.startedAt();
+        m.put("uptime", started > 0 && VmService.isRunning() ? (System.currentTimeMillis() - started) / 1000 : 0);
+        int pid = VmService.isRunning() ? findQemuPid() : -1;
+        if (pid > 0) {
+            String stat = new String(java.nio.file.Files.readAllBytes(new File("/proc/" + pid + "/stat").toPath()));
+            String[] f = stat.substring(stat.lastIndexOf(')') + 2).split(" ");
+            long ticks = Long.parseLong(f[11]) + Long.parseLong(f[12]); // utime + stime
+            long now = System.currentTimeMillis();
+            if (lastCpuTicks >= 0 && now > lastCpuAt) {
+                double secs = (now - lastCpuAt) / 1000.0;
+                m.put("cpu", (int) Math.round((ticks - lastCpuTicks) / 100.0 / secs * 100));
+            }
+            lastCpuTicks = ticks;
+            lastCpuAt = now;
+            String[] statm = new String(java.nio.file.Files.readAllBytes(new File("/proc/" + pid + "/statm").toPath())).trim().split(" ");
+            long page = android.system.Os.sysconf(android.system.OsConstants._SC_PAGESIZE);
+            m.put("rssMb", (int) (Long.parseLong(statm[1]) * page / (1024 * 1024)));
+        }
+        try {
+            Object st = QmpClient.exec("query-status", null, 1500);
+            if (st instanceof Map) m.put("status", ((Map<?, ?>) st).get("status"));
+        } catch (Exception ignored) { }
+        return m;
     }
 
     // ------------------------------------------------------------ VM kontrolü

@@ -27,6 +27,8 @@ public class VmService extends Service {
     private static final int NOTIF_ID = 1;
 
     private static volatile Process process;
+    private static volatile boolean stopRequested;
+    private static volatile long startedAt;
     private static volatile String runningId;
     private static volatile String runningName = "";
     private static final StringBuilder LOG = new StringBuilder();
@@ -57,8 +59,11 @@ public class VmService extends Service {
     static void stop(boolean force) {
         Process p = process;
         if (p == null) return;
+        stopRequested = true;
         if (force) p.destroyForcibly(); else p.destroy();
     }
+
+    static long startedAt() { return startedAt; }
 
     // ------------------------------------------------------------ servis
 
@@ -105,8 +110,10 @@ public class VmService extends Service {
 
             ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true).directory(getFilesDir());
             pb.environment().putAll(QemuEnv.environment(this));
+            stopRequested = false;
             Process p = pb.start();
             process = p;
+            startedAt = System.currentTimeMillis();
 
             PowerManager pm = getSystemService(PowerManager.class);
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Strata::qemu");
@@ -116,9 +123,17 @@ public class VmService extends Service {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = r.readLine()) != null) appendLog(line);
+            } catch (java.io.IOException readErr) {
+                // Süreç kapatılırken çıktı akışı kapanır: hata değil
             }
             code = p.waitFor();
-            appendLog("[QEMU exited with code " + code + "]");
+            long secs = (System.currentTimeMillis() - startedAt) / 1000;
+            if (stopRequested) {
+                appendLog("[VM kapatıldı / stopped by user after " + secs + " s]");
+                code = 0;
+            } else {
+                appendLog("[QEMU exited with code " + code + " after " + secs + " s]");
+            }
         } catch (Throwable t) {
             appendLog("ERROR: " + t.getMessage());
         } finally {

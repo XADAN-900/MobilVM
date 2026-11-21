@@ -46,6 +46,8 @@ class _DisplayScreenState extends State<DisplayScreen> {
   bool _keyBar = false;
   bool _paused = false;
   bool _landscape = false;
+  Timer? _statsTimer;
+  Map<String, dynamic> _stats = {};
   bool _savingState = false;
   final Set<int> _sticky = {};
   final Map<PhysicalKeyboardKey, int> _pressed = {};
@@ -77,6 +79,29 @@ class _DisplayScreenState extends State<DisplayScreen> {
     _sub = app.events.listen(_onEvent);
     _attach();
     _scheduleHide();
+    _statsTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollStats());
+    _pollStats();
+  }
+
+  Future<void> _pollStats() async {
+    try {
+      final st = await Backend.callMap('vmStats');
+      if (mounted) setState(() => _stats = st);
+    } catch (_) {}
+  }
+
+  String get _statsText {
+    final cpu = _stats['cpu'];
+    final rss = _stats['rssMb'];
+    final up = (_stats['uptime'] as num?)?.toInt() ?? 0;
+    final status = _stats['status'] as String?;
+    final parts = <String>[
+      if (cpu != null) 'CPU $cpu%',
+      if (rss != null) 'RAM ${fmtMb((rss as num).toInt())}',
+      '${up ~/ 60}:${(up % 60).toString().padLeft(2, '0')}',
+      if (status == 'paused') t('duraklatıldı', 'paused'),
+    ];
+    return parts.join('  ·  ');
   }
 
   @override
@@ -84,6 +109,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
     _sub?.cancel();
     _hideTimer?.cancel();
     _longTimer?.cancel();
+    _statsTimer?.cancel();
     _releaseSticky();
     Backend.fire('displayDetach');
     Backend.fire('keepScreenOn', {'on': false});
@@ -675,6 +701,21 @@ class _DisplayScreenState extends State<DisplayScreen> {
                 ),
               ),
               _toolbarWidget(kbVisible),
+              if (_toolbar && _connected && _stats['cpu'] != null)
+                Positioned(
+                  left: 10,
+                  bottom: 10,
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC151833),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(_statsText, style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
+                    ),
+                  ),
+                ),
               if (!_toolbar)
                 Positioned(
                   top: 0,
@@ -718,6 +759,10 @@ class _DisplayScreenState extends State<DisplayScreen> {
             const SizedBox(height: 12),
             Text(t('Sanal makine başlatılıyor…', 'Starting virtual machine…'),
                 style: const TextStyle(color: Colors.white60)),
+            if (_stats['cpu'] != null) ...[
+              const SizedBox(height: 8),
+              Text(_statsText, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            ],
           ]),
         ),
       ),

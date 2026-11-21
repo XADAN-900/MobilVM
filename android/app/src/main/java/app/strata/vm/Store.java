@@ -69,6 +69,7 @@ final class Store {
         m.put("mouseMode", "touch");   // touch | trackpad
         m.put("tbSize", 256);          // TCG çeviri önbelleği (MB)
         m.put("keyboard", "en-us");
+        m.put("mttcg", true);          // çok çekirdekli emülasyon
         return m;
     }
 
@@ -95,6 +96,11 @@ final class Store {
     static int settingInt(Context c, String key, int def) {
         Object o = getSettings(c).get(key);
         return o instanceof Number ? ((Number) o).intValue() : def;
+    }
+
+    static boolean settingBool(Context c, String key, boolean def) {
+        Object o = getSettings(c).get(key);
+        return o instanceof Boolean ? (Boolean) o : def;
     }
 
     // ------------------------------------------------------------ yardımcılar

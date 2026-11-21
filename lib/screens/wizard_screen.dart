@@ -136,13 +136,19 @@ class _WizardScreenState extends State<WizardScreen> {
       _vm.ramMb = math.min(_vm.ramMb, maxRamFor(_vm.arch));
       if (d.custom && _diskMode != _DiskMode.existing) _diskMode = _DiskMode.none;
       _nameTouchedOs = false;
-      final lines = d.findings.take(4).map((f) => '• $f').join('\n');
+      final lines = d.findings.take(6).map((f) => '• $f').join('\n');
+      final heavyWarn = d.ramHint != null && maxRamFor(_vm.arch) < d.ramHint!
+          ? '\n⚠ ${t('Bu sistem ${fmtMb(d.ramHint!)} RAM ister; telefonun en fazla ${fmtMb(maxRamFor(_vm.arch))} verebilir.', 'This OS wants ${fmtMb(d.ramHint!)} RAM; this phone can give at most ${fmtMb(maxRamFor(_vm.arch))}.')}'
+          : '';
       _detectNote = '${t('Algılandı', 'Detected')}: ${d.custom ? '${d.source} (${archLabelOf(d.os.arch)})' : d.os.name}'
           '${d.custom ? '' : '  ·  ${d.source}'}'
           '${d.uefi ? '\n• UEFI' : ''}'
-          '${lines.isEmpty ? '' : '\n$lines'}';
+          '${lines.isEmpty ? '' : '\n$lines'}'
+          '$heavyWarn';
       if (_autoName || _name.text.trim().isEmpty) {
-        _name.text = d.custom ? baseName(path).replaceAll(RegExp(r'\.[^.]+$'), '') : d.os.name;
+        _name.text = d.custom && (d.productName ?? '').isEmpty
+            ? baseName(path).replaceAll(RegExp(r'\.[^.]+$'), '')
+            : d.suggestedName;
         _autoName = true;
       }
     });

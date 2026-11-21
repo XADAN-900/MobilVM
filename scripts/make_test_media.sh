@@ -74,7 +74,28 @@ for n in boot16 boot32; do
   truncate -s 1474560 "$OUT/$n.img"
 done
 
-# --- 3) Gerçek Linux ISO'ları (adı anlamsız yapılarak: içerikten tanınmalı)
+# --- 3) live-build (Debian) yapısında özel dağıtım: TyrOS benzeri
+LB="$WORK/livebuild"
+mkdir -p "$LB/.disk" "$LB/live" "$LB/isolinux" "$LB/boot/grub"
+echo 'Debian GNU/Linux trixie "Trixie" - Official Snapshot amd64 LIVE Binary 20251121-12:00' > "$LB/.disk/info"
+python3 - "$LB/live/vmlinuz" <<'PY'
+import sys
+b = bytearray(16384)
+b[0x1FE:0x200] = b'\x55\xAA'
+b[0x202:0x206] = b'HdrS'          # Linux bzImage başlığı
+b[0x236] = 0x01                   # XLF_KERNEL_64
+open(sys.argv[1], 'wb').write(b)
+PY
+head -c 4096 /dev/urandom > "$LB/live/initrd.img"
+truncate -s 900M "$LB/live/filesystem.squashfs"
+printf 'label live\n  kernel /live/vmlinuz\n  append initrd=/live/initrd.img boot=live components quiet splash\n' > "$LB/isolinux/isolinux.cfg"
+printf 'menuentry "Start TyrOS" {\n  linux /live/vmlinuz boot=live\n  initrd /live/initrd.img\n}\n' > "$LB/boot/grub/grub.cfg"
+xorriso -as mkisofs -quiet -R -J -V "TyrOS 1.0" -o "$OUT/TyrOS_v1_0 (3).iso" "$LB"
+# .disk olmadan, sadece live klasörüyle
+rm -rf "$LB/.disk"
+xorriso -as mkisofs -quiet -R -J -V "MYDISTRO" -o "$OUT/livebuild-nodisk.iso" "$LB"
+
+# --- 4) Gerçek Linux ISO'ları (adı anlamsız yapılarak: içerikten tanınmalı)
 curl -fsSL -o "$OUT/mystery-a.iso" https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-virt-3.20.3-x86_64.iso || true
 curl -fsSL -o "$OUT/mystery-b.iso" http://tinycorelinux.net/15.x/x86/release/Core-current.iso || true
 ls -la "$OUT"

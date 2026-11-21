@@ -20,6 +20,7 @@ class AppState extends ChangeNotifier {
     'mouseMode': 'touch',
     'tbSize': 256,
     'keyboard': 'en-us',
+    'mttcg': true,
   };
   List<VmConfig> vms = [];
   String? runningId;
