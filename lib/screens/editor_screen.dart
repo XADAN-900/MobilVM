@@ -136,6 +136,27 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       });
       if (kind != slot && mounted) toast(context, '${baseName(p)} → ${mediaLabel(kind)}');
+      // Dosyadan sistem tanındıysa türü/sürümü değiştirmeyi öner
+      final d = await detectOsFromFile(p);
+      if (d != null && d.os.id != v.os.id && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text('${t('Algılandı', 'Detected')}: ${d.os.name}'),
+          action: SnackBarAction(
+            label: t('Uygula', 'Apply'),
+            onPressed: () {
+              if (!mounted) return;
+              setState(() {
+                d.os.applyTo(v);
+                _cpu.text = v.cpuModel;
+                if (v.ramMb > _maxRam) v.ramMb = _ramSteps.lastWhere((s) => s <= _maxRam);
+                v.cpus = math.min(v.cpus, math.max(1, math.min(app.cores, 8)));
+                v.boot = kind == 'floppy' ? 'floppy' : kind == 'disk' ? 'disk' : 'cd';
+              });
+            },
+          ),
+        ));
+      }
     } catch (e) {
       if (mounted) toast(context, '${t('Dosya alınamadı', 'Could not import file')}: $e');
     }
@@ -257,6 +278,7 @@ class _EditorScreenState extends State<EditorScreen> {
           const SizedBox(height: 8),
           SectionCard(title: t('İşletim sistemi', 'Operating system'), icon: Icons.computer_rounded, children: [
             DropdownButtonFormField<String>(
+              key: ValueKey('fam-${v.os.family}'),
               value: v.os.family,
               isExpanded: true,
               decoration: InputDecoration(labelText: t('Tür', 'Type')),
@@ -273,7 +295,7 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              key: ValueKey('ver-${v.os.family}'),
+              key: ValueKey('ver-${v.os.id}'),
               value: v.os.id,
               isExpanded: true,
               decoration: InputDecoration(labelText: t('Sürüm', 'Version')),

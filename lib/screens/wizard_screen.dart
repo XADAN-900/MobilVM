@@ -42,6 +42,9 @@ class _WizardScreenState extends State<WizardScreen> {
   String _family = 'windows';
   OsType _os = osById('winxp');
   bool _nameTouchedOs = false; // kullanıcı sürümü elle seçtiyse addan tahmin etme
+  bool _autoName = true; // ad otomatik mi dolduruldu (kullanıcı yazmadı)
+  String? _detectNote; // "ISO etiketinden algılandı: ..."
+  bool _detecting = false;
   late VmConfig _vm;
   _DiskMode _diskMode = _DiskMode.create;
   int _diskMb = 10240;
@@ -64,7 +67,11 @@ class _WizardScreenState extends State<WizardScreen> {
 
   void _selectOs(OsType os, {bool fromUser = false}) {
     setState(() {
-      if (fromUser) _nameTouchedOs = true;
+      if (fromUser) {
+        _nameTouchedOs = true;
+        _detectNote = null;
+        if (_autoName) _name.text = os.name;
+      }
       _os = os;
       _family = os.family;
       final iso = _vm.isoPath, floppy = _vm.floppyPath;
@@ -100,15 +107,32 @@ class _WizardScreenState extends State<WizardScreen> {
       if (kind != slot && mounted) {
         toast(context, '${baseName(p)} → ${mediaLabel(kind)}');
       }
-      final d = detectOs(baseName(p));
-      if (d != null && !_nameTouchedOs) {
-        _selectOs(d);
-        if (_name.text.trim().isEmpty) _name.text = d.name;
-        if (mounted) toast(context, '${t('Algılandı', 'Detected')}: ${d.name}');
-      }
+      await _detectFrom(p);
     } catch (e) {
       if (mounted) toast(context, '$e');
     }
+  }
+
+  /// Seçilen dosyaya göre alttaki Tür/Sürüm'ü (ve otomatik adı) günceller.
+  Future<void> _detectFrom(String path) async {
+    setState(() => _detecting = true);
+    final d = await detectOsFromFile(path);
+    if (!mounted) return;
+    if (d != null) _selectOs(d.os);
+    setState(() {
+      _detecting = false;
+      if (d == null) {
+        _detectNote = t('Sistem tanınamadı; türü ve sürümü aşağıdan seç.',
+            'Could not recognize the OS; pick the type and version below.');
+        return;
+      }
+      _nameTouchedOs = false;
+      _detectNote = '${t('Algılandı', 'Detected')}: ${d.os.name}  ·  ${d.source}';
+      if (_autoName || _name.text.trim().isEmpty) {
+        _name.text = d.os.name;
+        _autoName = true;
+      }
+    });
   }
 
   void _setMedia(String kind, String path) {
@@ -298,6 +322,7 @@ class _WizardScreenState extends State<WizardScreen> {
             helperText: t('Ada göre sistem otomatik seçilir', 'The OS is picked automatically from the name'),
           ),
           onChanged: (v) {
+            _autoName = v.trim().isEmpty;
             _onNameChanged(v);
             setState(() {});
           },
@@ -334,7 +359,24 @@ class _WizardScreenState extends State<WizardScreen> {
       ]),
       const SizedBox(height: 12),
       SectionCard(title: t('İşletim sistemi', 'Operating system'), icon: Icons.computer_rounded, children: [
+        if (_detecting) const LinearProgressIndicator(),
+        if (_detectNote != null)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(children: [
+              Icon(Icons.auto_awesome_rounded, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_detectNote!, style: const TextStyle(fontSize: 12.5))),
+            ]),
+          ),
         DropdownButtonFormField<String>(
+          key: ValueKey('fam-$_family'),
           value: _family,
           isExpanded: true,
           decoration: InputDecoration(labelText: t('Tür', 'Type')),
@@ -352,7 +394,7 @@ class _WizardScreenState extends State<WizardScreen> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          key: ValueKey('ver-$_family'),
+          key: ValueKey('ver-${_os.id}'),
           value: versions.any((o) => o.id == _os.id) ? _os.id : versions.first.id,
           isExpanded: true,
           decoration: InputDecoration(labelText: t('Sürüm', 'Version')),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'models.dart';
@@ -223,7 +225,7 @@ OsType? detectOs(String text) {
   if (has(r'debian')) return osById(is32 ? 'debian32' : 'debian');
   if (has(r'(ubuntu|kubuntu|xubuntu|lubuntu)')) return osById('ubuntu');
   if (has(r'linux[ _-]?mint|\bmint\b')) return osById('mint');
-  if (has(r'(archlinux|arch[ _-]linux|^arch\b)')) return osById('arch');
+  if (has(r'(archlinux|arch[ _-]linux|^arch\b|^arch[ _-]?20\d\d)')) return osById('arch');
   if (has(r'fedora')) return osById('fedora');
   if (has(r'(tinycore|tiny[ _-]core|corepure|core-current|\bcore-\d)')) return osById('tinycore');
   if (has(r'antix')) return osById('antix');
@@ -236,4 +238,75 @@ OsType? detectOs(String text) {
     return osById(is32 ? 'linux32' : 'linux64');
   }
   return null;
+}
+
+/// Dosyadan tespit sonucu: hangi sistem, neye bakılarak bulundu.
+class OsDetection {
+  final OsType os;
+  final String source;
+  const OsDetection(this.os, this.source);
+}
+
+/// VirtualBox gibi: önce dosya adına, sonra dosyanın içine bakar
+/// (ISO birim etiketi, disket önyükleme kesimi).
+Future<OsDetection?> detectOsFromFile(String path) async {
+  final name = path.split('/').last;
+  final byName = detectOs(name.replaceAll(RegExp(r'\.[^.]+$'), ''));
+  if (byName != null) return OsDetection(byName, name);
+  try {
+    final f = await File(path).open();
+    try {
+      final len = await f.length();
+      // ISO 9660: 16. sektörde "CD001" ve 32 baytlık birim etiketi
+      if (len > 34816) {
+        await f.setPosition(32768);
+        final pvd = await f.read(72);
+        if (pvd.length >= 72 && String.fromCharCodes(pvd.sublist(1, 6)) == 'CD001') {
+          final label = String.fromCharCodes(pvd.sublist(40, 72)).trim();
+          final os = _detectFromIsoLabel(label);
+          if (os != null) return OsDetection(os, label);
+        }
+      }
+      // Disket / FAT önyükleme kesimi: OEM adı (3..11) ve birim etiketi (43..54)
+      if (len >= 512 && len <= 2949120) {
+        await f.setPosition(0);
+        final bs = await f.read(62);
+        if (bs.length >= 62) {
+          final oem = String.fromCharCodes(bs.sublist(3, 11)).toUpperCase();
+          final vol = String.fromCharCodes(bs.sublist(43, 54)).trim();
+          final os = _detectFromBootSector(oem, vol);
+          if (os != null) return OsDetection(os, oem.trim());
+        }
+      }
+    } finally {
+      await f.close();
+    }
+  } catch (_) {}
+  return null;
+}
+
+OsType? _detectFromIsoLabel(String label) {
+  final l = label.toUpperCase();
+  if (l.isEmpty) return null;
+  final x64 = l.contains('X64') || l.contains('XFRE') || l.contains('AMD64') || l.contains('X86_64');
+  // Microsoft kurulum DVD'lerinin kod adları
+  if (RegExp(r'^(CCCOMA|CPBA|CENA|CCSA|CPRA|CCOMA|J_CCSA|ESD-ISO)').hasMatch(l)) {
+    return osById(l.contains('X86FRE') ? 'win10_32' : 'win10');
+  }
+  if (RegExp(r'^(IR[0-9M]|IRM|HRM|HB1)').hasMatch(l)) return osById('win8');
+  if (RegExp(r'^(GRM|GSP1RM|GRTM|GRC|7600|7601)').hasMatch(l)) return osById(x64 ? 'win7' : 'win7_32');
+  if (RegExp(r'^(LRM|FB1E|FRM|LB1)').hasMatch(l)) return osById('winvista');
+  if (RegExp(r'^(WX|WINXP|XP)').hasMatch(l)) return osById('winxp');
+  if (RegExp(r'^(W2[PSAK]|WIN2000|W2K)').hasMatch(l)) return osById('win2k');
+  if (l.contains('WINME') || l.startsWith('WME')) return osById('winme');
+  if (l.contains('WIN98') || l.startsWith('W98')) return osById('win98');
+  if (l.contains('WIN95') || l.startsWith('W95')) return osById('win95');
+  return detectOs(label);
+}
+
+OsType? _detectFromBootSector(String oem, String vol) {
+  if (oem.contains('FRDOS') || oem.contains('FREEDOS')) return osById('freedos');
+  if (oem.startsWith('MSWIN4')) return osById('win98');
+  if (oem.startsWith('MSDOS') || oem.startsWith('IBM')) return osById('msdos');
+  return detectOs(vol);
 }
