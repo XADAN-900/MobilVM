@@ -815,7 +815,10 @@ class _DisplayScreenState extends State<DisplayScreen> {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white12),
           ),
-          child: SingleChildScrollView(
+          // Menü ve gizle düğmeleri her zaman görünür; ortadaki düğmeler dar ekranda kaydırılır
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(
+              child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               btn(Icons.arrow_back_rounded, t('Geri (VM çalışmaya devam eder)', 'Back (VM keeps running)'),
@@ -849,6 +852,9 @@ class _DisplayScreenState extends State<DisplayScreen> {
                 await _qmp(_paused ? 'cont' : 'stop');
                 if (mounted) setState(() => _paused = !_paused);
               }, active: _paused),
+            ]),
+              ),
+            ),
               PopupMenuButton<String>(
                 tooltip: t('Diğer', 'More'),
                 icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
@@ -877,8 +883,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
                 onPressed: _hideToolbar,
                 icon: const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white),
               ),
-            ]),
-          ),
+          ]),
         ),
       ),
     );
