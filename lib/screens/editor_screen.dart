@@ -305,7 +305,11 @@ class _EditorScreenState extends State<EditorScreen> {
                 for (final f in osFamilies)
                   DropdownMenuItem(
                     value: f.id,
-                    child: Row(children: [Icon(f.icon, size: 20), const SizedBox(width: 10), Text(f.name)]),
+                    child: Row(children: [
+                      Icon(f.icon, size: 20),
+                      const SizedBox(width: 10),
+                      Flexible(child: Text(f.name, overflow: TextOverflow.ellipsis)),
+                    ]),
                   ),
               ],
               onChanged: (f) {

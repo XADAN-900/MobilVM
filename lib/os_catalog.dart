@@ -426,7 +426,13 @@ class OsDetection {
 Future<OsDetection?> detectOsFromFile(String path) async {
   final name = path.split('/').last;
   final byName = detectOs(name.replaceAll(RegExp(r'\.[^.]+$'), ''));
-  if (byName != null) return OsDetection(byName, name);
+  // Ad yalnızca mimariyi ima ediyorsa ("...-arm.iso") karar verme: önce içine bak
+  if (byName != null && !byName.id.startsWith('other')) return OsDetection(byName, name);
+  final fromContent = await _detectFromContent(path, name);
+  return fromContent ?? (byName == null ? null : OsDetection(byName, name));
+}
+
+Future<OsDetection?> _detectFromContent(String path, String name) async {
   try {
     final f = await File(path).open();
     try {
