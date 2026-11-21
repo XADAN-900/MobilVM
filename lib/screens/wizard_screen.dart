@@ -404,7 +404,11 @@ class _WizardScreenState extends State<WizardScreen> {
             for (final f in osFamilies)
               DropdownMenuItem(
                 value: f.id,
-                child: Row(children: [Icon(f.icon, size: 20), const SizedBox(width: 10), Text(f.name)]),
+                child: Row(children: [
+                  Icon(f.icon, size: 20),
+                  const SizedBox(width: 10),
+                  Flexible(child: Text(f.name, overflow: TextOverflow.ellipsis)),
+                ]),
               ),
           ],
           onChanged: (f) {
@@ -487,10 +491,13 @@ class _WizardScreenState extends State<WizardScreen> {
     final tooMuch = _vm.ramMb > app.totalRamMb * 0.5;
     return [
       SectionCard(title: t('Bellek (RAM)', 'Memory (RAM)'), icon: Icons.memory_rounded, children: [
-        Row(children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Text(fmtMb(_vm.ramMb), style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: cs.primary)),
-          const Spacer(),
-          Text('${t('Önerilen', 'Recommended')}: ${fmtMb(_os.ram)}', style: TextStyle(color: cs.onSurfaceVariant)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text('${t('Önerilen', 'Recommended')}: ${fmtMb(_os.ram)}',
+                textAlign: TextAlign.end, style: TextStyle(color: cs.onSurfaceVariant)),
+          ),
         ]),
         Slider(
           value: opts.indexOf(_vm.ramMb).toDouble(),
@@ -510,10 +517,15 @@ class _WizardScreenState extends State<WizardScreen> {
       const SizedBox(height: 12),
       SectionCard(title: t('İşlemci', 'Processor'), icon: Icons.developer_board_rounded, children: [
         Row(children: [
-          Text('${_vm.cpus} ${t('çekirdek', 'cores')}',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: cs.primary)),
-          const Spacer(),
-          Text('${t('Telefonda', 'Phone has')} ${app.cores}', style: TextStyle(color: cs.onSurfaceVariant)),
+          Flexible(
+            child: Text('${_vm.cpus} ${t('çekirdek', 'cores')}',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: cs.primary)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text('${t('Telefonda', 'Phone has')} ${app.cores}',
+                textAlign: TextAlign.end, style: TextStyle(color: cs.onSurfaceVariant)),
+          ),
         ]),
         Slider(
           value: _vm.cpus.clamp(1, maxCpu).toDouble(),

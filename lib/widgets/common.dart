@@ -81,7 +81,7 @@ class SectionCard extends StatelessWidget {
             Row(children: [
               Icon(icon, size: 20, color: cs.primary),
               const SizedBox(width: 10),
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
             ]),
             const SizedBox(height: 12),
             ...children,

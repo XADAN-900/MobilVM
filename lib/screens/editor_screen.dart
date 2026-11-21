@@ -616,13 +616,16 @@ class _EditorScreenState extends State<EditorScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 4, 4),
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest.withOpacity(0.35),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(children: [
-          Icon(icon, color: path.isEmpty ? cs.onSurfaceVariant : cs.primary),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Icon(icon, color: path.isEmpty ? cs.onSurfaceVariant : cs.primary),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -633,9 +636,10 @@ class _EditorScreenState extends State<EditorScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
+              // Butonlar alt satırda: dar ekranda ve uzun çevirilerde taşmaz
+              Wrap(spacing: 4, children: actions),
             ]),
           ),
-          ...actions,
           if (path.isNotEmpty)
             IconButton(
               tooltip: t('Kaldır', 'Remove'),
