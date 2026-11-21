@@ -31,7 +31,7 @@ void main() {
   test('yer tutucular ve OS adları', () {
     app.settings['language'] = 'de';
     expect(t('"{0}" silinsin mi?', 'Delete "{0}"?', ['XP']), '„XP“ löschen?');
-    expect(osById('custom').label, 'Andere / Unbekannt (64-bit)');
+    expect(osById('custom').label, 'Andere / Unbekannt (64-Bit)');
     app.settings['language'] = 'tr';
     expect(osById('linux64').label, 'Linux (64-bit, diğer)');
     app.settings['language'] = 'ar';
