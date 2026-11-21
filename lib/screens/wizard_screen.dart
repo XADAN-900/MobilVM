@@ -126,10 +126,23 @@ class _WizardScreenState extends State<WizardScreen> {
             'Could not recognize the OS; pick the type and version below.');
         return;
       }
+      // İçerikten gelen ek bilgiler (özel sistem, UEFI, önyükleme aygıtı)
+      final iso = _vm.isoPath, floppy = _vm.floppyPath, bootBefore = _vm.boot;
+      d.applyTo(_vm);
+      _vm
+        ..isoPath = iso
+        ..floppyPath = floppy;
+      if (d.boot == null) _vm.boot = bootBefore;
+      _vm.ramMb = math.min(_vm.ramMb, maxRamFor(_vm.arch));
+      if (d.custom && _diskMode != _DiskMode.existing) _diskMode = _DiskMode.none;
       _nameTouchedOs = false;
-      _detectNote = '${t('Algılandı', 'Detected')}: ${d.os.name}  ·  ${d.source}';
+      final lines = d.findings.take(4).map((f) => '• $f').join('\n');
+      _detectNote = '${t('Algılandı', 'Detected')}: ${d.custom ? '${d.source} (${archLabelOf(d.os.arch)})' : d.os.name}'
+          '${d.custom ? '' : '  ·  ${d.source}'}'
+          '${d.uefi ? '\n• UEFI' : ''}'
+          '${lines.isEmpty ? '' : '\n$lines'}';
       if (_autoName || _name.text.trim().isEmpty) {
-        _name.text = d.os.name;
+        _name.text = d.custom ? baseName(path).replaceAll(RegExp(r'\.[^.]+$'), '') : d.os.name;
         _autoName = true;
       }
     });
@@ -616,6 +629,8 @@ class _WizardScreenState extends State<WizardScreen> {
             row('RAM', fmtMb(_vm.ramMb)),
             row(t('İşlemci', 'CPU'), '${_vm.cpus} ${t('çekirdek', 'cores')}'),
             row(t('Ekran kartı', 'Graphics'), _vm.vga),
+            row('Firmware', _vm.firmware == 'uefi' ? 'UEFI' : 'BIOS'),
+            row(t('Fare', 'Mouse'), _vm.tablet ? 'USB tablet' : 'PS/2'),
             row(t('Ağ', 'Network'), _vm.net ? 'NAT · ${_vm.nic}' : t('Kapalı', 'Off')),
             row('CD / DVD', _vm.isoPath.isEmpty ? '—' : baseName(_vm.isoPath)),
             row(t('Disket', 'Floppy'), _vm.floppyPath.isEmpty ? '—' : baseName(_vm.floppyPath)),

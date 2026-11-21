@@ -138,20 +138,26 @@ class _EditorScreenState extends State<EditorScreen> {
       if (kind != slot && mounted) toast(context, '${baseName(p)} → ${mediaLabel(kind)}');
       // Dosyadan sistem tanındıysa türü/sürümü değiştirmeyi öner
       final d = await detectOsFromFile(p);
-      if (d != null && d.os.id != v.os.id && mounted) {
+      if (d != null && (d.os.id != v.os.id || d.custom || d.uefi) && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           duration: const Duration(seconds: 8),
-          content: Text('${t('Algılandı', 'Detected')}: ${d.os.name}'),
+          content: Text('${t('Algılandı', 'Detected')}: '
+              '${d.custom ? '${d.source} (${archLabelOf(d.os.arch)}${d.uefi ? ', UEFI' : ''})' : d.os.name}'),
           action: SnackBarAction(
             label: t('Uygula', 'Apply'),
             onPressed: () {
               if (!mounted) return;
               setState(() {
-                d.os.applyTo(v);
+                final iso = v.isoPath, floppy = v.floppyPath, disk = v.diskPath;
+                d.applyTo(v);
+                v
+                  ..isoPath = iso
+                  ..floppyPath = floppy
+                  ..diskPath = disk;
                 _cpu.text = v.cpuModel;
                 if (v.ramMb > _maxRam) v.ramMb = _ramSteps.lastWhere((s) => s <= _maxRam);
                 v.cpus = math.min(v.cpus, math.max(1, math.min(app.cores, 8)));
-                v.boot = kind == 'floppy' ? 'floppy' : kind == 'disk' ? 'disk' : 'cd';
+                if (d.boot == null) v.boot = kind == 'floppy' ? 'floppy' : kind == 'disk' ? 'disk' : 'cd';
               });
             },
           ),
@@ -399,6 +405,22 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
               ),
             ]),
+            const SizedBox(height: 12),
+            _dropdown<String>(
+              'Firmware',
+              v.arch == 'x86_16' || v.machine == 'isapc' ? 'bios' : v.firmware,
+              const {'bios': 'BIOS (SeaBIOS)', 'uefi': 'UEFI (OVMF)'},
+              (x) => setState(() => v.firmware = x),
+            ),
+            if (v.firmware == 'uefi')
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  t('UEFI\'li VM\'lerde "Durumu kaydet" çalışmaz; anlık görüntüler yalnızca VM kapalıyken alınabilir.',
+                      'With UEFI, "Save state" does not work; snapshots can be taken only while the VM is off.'),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ),
           ]),
           const SizedBox(height: 12),
 

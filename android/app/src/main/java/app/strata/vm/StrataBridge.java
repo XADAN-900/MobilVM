@@ -125,7 +125,11 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                     }
                     VmConfig v = Store.getVm(ctx, id);
                     if (v != null && Boolean.TRUE.equals(files) && !v.diskPath.isEmpty()) deleteImageFile(v.diskPath);
-                    if (id != null) QemuEnv.deleteRecursive(QemuEnv.sharedDir(ctx, id));
+                    if (id != null) {
+                        QemuEnv.deleteRecursive(QemuEnv.sharedDir(ctx, id));
+                        //noinspection ResultOfMethodCallIgnored
+                        new File(new File(ctx.getFilesDir(), "nvram"), id.replaceAll("[^A-Za-z0-9-]", "_") + ".fd").delete();
+                    }
                     Store.deleteVm(ctx, id);
                     r.success(null);
                     break;

@@ -41,6 +41,26 @@ final class QemuCommand {
         add(a, "-accel", "tcg,tb-size=" + tb);
         if (!vm.vga.isEmpty()) add(a, "-vga", vm.vga);
 
+        // UEFI (OVMF/edk2): kod salt okunur, değişkenler VM'e özel kopyada
+        if ("uefi".equals(vm.firmware) && !vm.arch.equals("x86_16") && !isa) {
+            File share = QemuEnv.shareDir(c);
+            File code = new File(share, vm.arch.equals("x86_64") ? "edk2-x86_64-code.fd" : "edk2-i386-code.fd");
+            File varsTemplate = new File(share, "edk2-i386-vars.fd");
+            if (!code.exists() || !varsTemplate.exists()) throw new IllegalStateException("UEFI firmware missing");
+            File vars = new File(new File(c.getFilesDir(), "nvram"), vm.id.replaceAll("[^A-Za-z0-9-]", "_") + ".fd");
+            if (!vars.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                vars.getParentFile().mkdirs();
+                try {
+                    java.nio.file.Files.copy(varsTemplate.toPath(), vars.toPath());
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException("UEFI vars: " + e.getMessage());
+                }
+            }
+            add(a, "-drive", "if=pflash,format=raw,unit=0,readonly=on,file=" + esc(code.getPath()));
+            add(a, "-drive", "if=pflash,format=raw,unit=1,file=" + esc(vars.getPath()));
+        }
+
         // Depolama: disk (ide0), CD (ide1-master, her zaman var ki sonradan ISO takılabilsin), disket
         if (!vm.diskPath.isEmpty()) {
             add(a, "-drive", "id=hd0,file=" + esc(vm.diskPath) + ",format=" + diskFormat(vm.diskPath)

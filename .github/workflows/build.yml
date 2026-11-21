@@ -37,6 +37,14 @@ jobs:
       - name: Kod analizi
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
+      - name: Test imajları üret (kendi OS, disketler, gerçek Linux ISO'ları)
+        run: bash scripts/make_test_media.sh "$RUNNER_TEMP/media"
+
+      - name: İşletim sistemi algılama testleri
+        env:
+          STRATA_TEST_MEDIA: ${{ runner.temp }}/media
+        run: flutter test --reporter expanded
+
       - name: APK derle
         run: flutter build apk --release --target-platform android-arm64
 

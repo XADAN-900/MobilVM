@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'inspector.dart';
 import 'models.dart';
 import 'state.dart';
 
@@ -92,7 +93,8 @@ class OsType {
     ..net = net
     ..nic = nic
     ..boot = boot
-    ..tablet = tablet;
+    ..tablet = tablet
+    ..firmware = id == 'win11' ? 'uefi' : 'bios';
 }
 
 const osCatalog = <OsType>[
@@ -254,7 +256,30 @@ OsType? detectOs(String text) {
 class OsDetection {
   final OsType os;
   final String source;
-  const OsDetection(this.os, this.source);
+
+  /// Bilinen bir dağıtım değil; içerik incelemesiyle bulunan (ör. kendi yazdığın) sistem.
+  final bool custom;
+  final bool uefi;
+  final String? boot; // cd | floppy | disk
+  final List<String> findings;
+
+  const OsDetection(this.os, this.source,
+      {this.custom = false, this.uefi = false, this.boot, this.findings = const []});
+
+  /// Önerilen ayarları VM'e uygular (bilinen sürüm + içerikten gelen ek bilgiler).
+  void applyTo(VmConfig v) {
+    os.applyTo(v);
+    v.firmware = uefi ? 'uefi' : 'bios';
+    if (custom) {
+      // Hobi / özel sistemlerde genelde USB ve ağ sürücüsü yoktur: PS/2 fare, ağ kapalı, az bellek
+      v.tablet = false;
+      v.net = false;
+      v.cpus = 1;
+      v.ramMb = switch (os.arch) { 'x86_16' => 16, 'x86_32' => 128, _ => 256 };
+      v.vga = os.arch == 'x86_16' ? 'cirrus' : 'std';
+    }
+    if (boot != null) v.boot = boot!;
+  }
 }
 
 /// VirtualBox gibi: önce dosya adına, sonra dosyanın içine bakar
@@ -278,6 +303,8 @@ Future<OsDetection?> detectOsFromFile(String path) async {
           // Etiket bir şey söylemiyor: ISO'nun içindeki klasör ve dosyalara bak
           final byContent = await _IsoScanner(f).detect();
           if (byContent != null) return byContent;
+          // Bilinen dağıtım değil: içini açıp çekirdeğe / önyükleyiciye bak
+          return _fromReport(await inspectIso(f, len));
         }
       }
       // Disket / FAT önyükleme kesimi: OEM adı (3..11) ve birim etiketi (43..54)
@@ -291,11 +318,38 @@ Future<OsDetection?> detectOsFromFile(String path) async {
           if (os != null) return OsDetection(os, oem.trim());
         }
       }
+      // Ham disk / disket imajı: MBR, bölüm tablosu ve önyükleme kodu
+      await f.setPosition(0);
+      final head = await f.read(4);
+      final container = String.fromCharCodes(head);
+      if (!container.startsWith('QFI') && !container.startsWith('<<<') && !container.startsWith('KDM') &&
+          !container.startsWith('cone') && !container.startsWith('vhdx')) {
+        return _fromReport(await inspectRaw(f, len));
+      }
     } finally {
       await f.close();
     }
   } catch (_) {}
   return null;
+}
+
+OsDetection? _fromReport(MediaReport rep) {
+  final findings = rep.findings;
+  if (rep.linuxKernel) {
+    return OsDetection(osById(rep.arch == 'x86_32' ? 'linux32' : 'linux64'), t('Linux çekirdeği', 'Linux kernel'),
+        uefi: rep.uefiOnly, findings: findings);
+  }
+  if (rep.windowsHint != null) {
+    return OsDetection(osById('winxp'), t('NTFS bölümü', 'NTFS partition'), boot: 'disk', findings: findings);
+  }
+  if (rep.bsdHint != null) return OsDetection(osById(rep.bsdHint!), 'BSD', boot: 'disk', findings: findings);
+  if (rep.linuxPartition) {
+    return OsDetection(osById('linux64'), t('Linux bölümü', 'Linux partition'), boot: 'disk', findings: findings);
+  }
+  if (rep.arch.isEmpty) return null;
+  final os = osById(switch (rep.arch) { 'x86_16' => 'other16', 'x86_32' => 'other32', _ => 'custom' });
+  return OsDetection(os, t('Özel işletim sistemi', 'Custom operating system'),
+      custom: true, uefi: rep.uefiOnly && rep.arch != 'x86_16', boot: rep.boot, findings: findings);
 }
 
 OsType? _detectFromIsoLabel(String label) {
@@ -416,10 +470,6 @@ class _IsoScanner {
         await sub(dn);
       }
       final all = names.join(' ');
-      final linuxy = RegExp(r'(isolinux|syslinux|casper|\blive\b|vmlinuz|initrd|bzimage|grub|liveos|\barch\b|'
-              r'core\.gz|tinycore|apks|antix|kernel|pmagic|sysrcd|boot\.cat)')
-          .hasMatch(all);
-      if (!linuxy) return null;
       final is32only = _is32(all) && !_is64(all);
       if (root.containsKey('apks')) return OsDetection(osById('alpine'), t('Alpine tabanlı', 'Alpine based'));
       if (root.containsKey('casper')) return OsDetection(osById('ubuntu'), t('Ubuntu tabanlı', 'Ubuntu based'));
@@ -435,7 +485,7 @@ class _IsoScanner {
       if (root.containsKey('antix')) return OsDetection(osById('antix'), 'antiX');
       if (names.contains('core.gz') || names.contains('tinycore.gz')) return OsDetection(osById('tinycore'), 'Tiny Core');
       if (names.contains('loader') && root.containsKey('rescue')) return OsDetection(osById('freebsd'), 'FreeBSD');
-      return OsDetection(osById(is32only ? 'linux32' : 'linux64'), t('Linux (genel)', 'Linux (generic)'));
+      return null; // geri kalanı derin inceleme (inspector.dart) karar verir
     } catch (_) {
       return null;
     }

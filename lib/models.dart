@@ -31,6 +31,7 @@ class VmConfig {
   String extraArgs;
   bool savedState;
   bool sharedFolder;
+  String firmware;
   int createdAt;
   int lastRunAt;
 
@@ -57,6 +58,7 @@ class VmConfig {
     this.extraArgs = '',
     this.savedState = false,
     this.sharedFolder = false,
+    this.firmware = 'bios',
     this.createdAt = 0,
     this.lastRunAt = 0,
   });
@@ -88,6 +90,7 @@ class VmConfig {
       extraArgs: s('extraArgs', ''),
       savedState: b('savedState', false),
       sharedFolder: b('sharedFolder', false),
+      firmware: s('firmware', 'bios'),
       createdAt: n('createdAt', 0),
       lastRunAt: n('lastRunAt', 0),
     );
@@ -116,6 +119,7 @@ class VmConfig {
         'extraArgs': extraArgs,
         'savedState': savedState,
         'sharedFolder': sharedFolder,
+        'firmware': firmware,
         'createdAt': createdAt,
         'lastRunAt': lastRunAt,
       };
