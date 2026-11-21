@@ -24,6 +24,9 @@ class AppState extends ChangeNotifier {
   List<VmConfig> vms = [];
   String? runningId;
 
+  /// Ekran açık mı (açıksa hata mesajını ekran gösterir).
+  bool displayOpen = false;
+
   String? importName;
   double importProgress = 0;
 
@@ -121,7 +124,13 @@ class AppState extends ChangeNotifier {
   Future<void> start(String id) async {
     runningId = id;
     notifyListeners();
-    await Backend.call('startVm', {'id': id});
+    try {
+      await Backend.call('startVm', {'id': id});
+    } catch (_) {
+      runningId = null;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> stop({bool force = false}) => Backend.call('stopVm', {'force': force});
@@ -132,7 +141,8 @@ class AppState extends ChangeNotifier {
     await Backend.call('saveSettings', settings);
   }
 
-  Future<String?> pickFile() => Backend.call<String>('pickFile');
+  Future<String?> pickFile({String? sharedFor}) =>
+      Backend.call<String>('pickFile', sharedFor == null ? null : {'sharedFor': sharedFor});
 }
 
 final app = AppState();

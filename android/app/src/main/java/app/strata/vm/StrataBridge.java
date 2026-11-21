@@ -55,6 +55,7 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
     private final ExecutorService io = Executors.newCachedThreadPool();
 
     private MethodChannel.Result pendingPick;
+    private File pendingDest;
     private DisplaySession display;
 
     StrataBridge(Activity activity, FlutterEngine engine) {
@@ -118,18 +119,65 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                 case "deleteVm": {
                     String id = call.argument("id");
                     Boolean files = call.argument("deleteFiles");
+                    if (id != null && id.equals(VmService.runningId())) {
+                        r.error("RUNNING", "VM is running", null);
+                        break;
+                    }
                     VmConfig v = Store.getVm(ctx, id);
                     if (v != null && Boolean.TRUE.equals(files) && !v.diskPath.isEmpty()) deleteImageFile(v.diskPath);
+                    if (id != null) QemuEnv.deleteRecursive(QemuEnv.sharedDir(ctx, id));
                     Store.deleteVm(ctx, id);
                     r.success(null);
                     break;
                 }
 
-                case "pickFile": pickFile(r); break;
+                case "pickFile": {
+                    String vmId = call.argument("sharedFor");
+                    pickFile(r, vmId == null ? QemuEnv.imagesDir(ctx) : QemuEnv.sharedDir(ctx, vmId));
+                    break;
+                }
+                case "sharedList": r.success(listDir(QemuEnv.sharedDir(ctx, call.argument("id")))); break;
+                case "sharedDelete": {
+                    String id = call.argument("id");
+                    r.success(deleteInside(QemuEnv.sharedDir(ctx, id), call.argument("path")));
+                    break;
+                }
+
+                case "snapshotList": {
+                    String id = call.argument("id");
+                    bg(r, () -> snapshotList(id));
+                    break;
+                }
+                case "snapshotCreate":
+                case "snapshotRestore":
+                case "snapshotDelete": {
+                    String id = call.argument("id");
+                    String name = call.argument("name");
+                    String m = call.method;
+                    bg(r, () -> snapshotOp(m, id, name));
+                    break;
+                }
+                case "saveState": {
+                    String id = call.argument("id");
+                    bg(r, () -> saveState(id));
+                    break;
+                }
+                case "discardState": {
+                    VmConfig v = Store.getVm(ctx, call.argument("id"));
+                    if (v != null) { v.savedState = false; Store.upsertVm(ctx, v); }
+                    r.success(null);
+                    break;
+                }
                 case "createDisk": {
                     String name = call.argument("name");
                     Number size = call.argument("sizeMb");
                     bg(r, () -> createDisk(name, size == null ? 1024 : size.longValue()));
+                    break;
+                }
+                case "cloneDisk": {
+                    String path = call.argument("path");
+                    String name = call.argument("name");
+                    bg(r, () -> cloneDisk(path, name));
                     break;
                 }
                 case "listImages": r.success(listImages()); break;
@@ -247,12 +295,13 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
 
     // ------------------------------------------------------------ dosyalar
 
-    private void pickFile(MethodChannel.Result r) {
+    private void pickFile(MethodChannel.Result r, File dest) {
         if (pendingPick != null) {
-            r.error("BUSY", "picker already open", null);
-            return;
+            // önceki seçici yanıtsız kaldıysa (ör. sistem kapattı) iptal say
+            pendingPick.success(null);
         }
         pendingPick = r;
+        pendingDest = dest;
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
         activity.startActivityForResult(i, REQ_PICK);
     }
@@ -267,11 +316,12 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
             return;
         }
         Uri uri = data.getData();
-        bg(r, () -> importFile(uri));
+        File dest = pendingDest != null ? pendingDest : QemuEnv.imagesDir(ctx);
+        bg(r, () -> importFile(uri, dest));
     }
 
     /** QEMU content:// adreslerini açamaz; dosya images klasörüne kopyalanır (aynısı varsa atlanır). */
-    private Object importFile(Uri uri) throws Exception {
+    private Object importFile(Uri uri, File destDir) throws Exception {
         ContentResolver cr = ctx.getContentResolver();
         String name = "file-" + System.currentTimeMillis() + ".img";
         long size = -1;
@@ -281,8 +331,16 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                 if (!c.isNull(1)) size = c.getLong(1);
             }
         }
-        File target = new File(QemuEnv.imagesDir(ctx), name);
+        File target = new File(destDir, name);
         if (target.exists() && size > 0 && target.length() == size) return target.getPath();
+        // Aynı adda farklı bir dosya varsa üzerine yazma: "ad (2).uzantı"
+        if (target.exists()) {
+            int dot = name.lastIndexOf('.');
+            String stem = dot > 0 ? name.substring(0, dot) : name;
+            String ext = dot > 0 ? name.substring(dot) : "";
+            for (int i = 2; target.exists(); i++) target = new File(destDir, stem + " (" + i + ")" + ext);
+            name = target.getName();
+        }
 
         Events.emit(Events.of("type", "import", "state", "start", "name", name, "progress", 0.0));
         File tmp = new File(target.getPath() + ".part");
@@ -305,8 +363,6 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
             Events.emit(Events.of("type", "import", "state", "done", "name", name, "progress", 1.0));
             throw e;
         }
-        //noinspection ResultOfMethodCallIgnored
-        target.delete();
         if (!tmp.renameTo(target)) throw new IllegalStateException("rename failed");
         Events.emit(Events.of("type", "import", "state", "done", "name", name, "progress", 1.0));
         return target.getPath();
@@ -323,9 +379,31 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
         return f.getPath();
     }
 
+    /** Diskin bağımsız, sıkıştırılmış qcow2 kopyası (VM klonlama için). */
+    private Object cloneDisk(String src, String name) throws Exception {
+        File img = QemuEnv.bin(ctx, QemuEnv.BIN_IMG);
+        if (img == null) throw new IllegalStateException("qemu-img not found");
+        if (src == null || !new File(src).exists()) throw new IllegalStateException("disk not found");
+        String safe = (name == null || name.trim().isEmpty() ? "clone" : name).replaceAll("[^A-Za-z0-9_.-]", "_");
+        File f = new File(QemuEnv.imagesDir(ctx), safe + ".qcow2");
+        for (int i = 2; f.exists(); i++) f = new File(QemuEnv.imagesDir(ctx), safe + "-" + i + ".qcow2");
+        Object[] res = QemuEnv.run(ctx, Arrays.asList(img.getPath(), "convert", "-U", "-O", "qcow2",
+                "-f", QemuCommand.diskFormat(src), src, f.getPath()));
+        if ((Integer) res[0] != 0) {
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
+            throw new IllegalStateException(((String) res[1]).trim());
+        }
+        return f.getPath();
+    }
+
     private List<Object> listImages() {
+        return listDir(QemuEnv.imagesDir(ctx));
+    }
+
+    private List<Object> listDir(File dir) {
         List<Object> out = new ArrayList<>();
-        File[] files = QemuEnv.imagesDir(ctx).listFiles();
+        File[] files = dir.listFiles();
         if (files == null) return out;
         Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
         for (File f : files) {
@@ -336,11 +414,16 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
     }
 
     private boolean deleteImageFile(String path) {
+        return deleteInside(QemuEnv.imagesDir(ctx), path);
+    }
+
+    /** Yalnızca verilen klasörün içindeki bir dosyayı siler. */
+    private boolean deleteInside(File dir, String path) {
         if (path == null) return false;
         try {
             File f = new File(path).getCanonicalFile();
-            String dir = QemuEnv.imagesDir(ctx).getCanonicalPath() + File.separator;
-            return f.getPath().startsWith(dir) && f.delete();
+            String d = dir.getCanonicalPath() + File.separator;
+            return f.getPath().startsWith(d) && f.delete();
         } catch (Exception e) {
             return false;
         }
@@ -362,6 +445,75 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
         } catch (Exception e) {
             return QmpClient.hmp("change cd0 \"" + path.replace("\"", "\\\"") + "\" raw");
         }
+    }
+
+    private VmConfig snapshotVm(String id) {
+        VmConfig v = Store.getVm(ctx, id);
+        if (v == null) throw new IllegalStateException("VM not found");
+        if (v.diskPath.isEmpty() || !QemuCommand.diskFormat(v.diskPath).equals("qcow2")) {
+            throw new IllegalStateException("QCOW2");
+        }
+        return v;
+    }
+
+    private Object snapshotList(String id) throws Exception {
+        VmConfig v = snapshotVm(id);
+        File img = QemuEnv.bin(ctx, QemuEnv.BIN_IMG);
+        if (img == null) throw new IllegalStateException("qemu-img not found");
+        Object[] res = QemuEnv.run(ctx, Arrays.asList(img.getPath(), "info", "-U", "--output=json", v.diskPath));
+        String out = (String) res[1];
+        if ((Integer) res[0] != 0) throw new IllegalStateException(out.trim());
+        List<Object> list = new ArrayList<>();
+        org.json.JSONArray arr = new JSONObject(out.substring(out.indexOf('{'))).optJSONArray("snapshots");
+        if (arr == null) return list;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.getJSONObject(i);
+            list.add(Events.of(
+                    "id", o.optString("id"),
+                    "name", o.optString("name"),
+                    "date", o.optLong("date-sec") * 1000L,
+                    "vmStateSize", o.optLong("vm-state-size"),
+                    "auto", QemuCommand.SAVED_STATE.equals(o.optString("name"))));
+        }
+        return list;
+    }
+
+    private Object snapshotOp(String op, String id, String rawName) throws Exception {
+        VmConfig v = snapshotVm(id);
+        String name = rawName == null ? "" : rawName.trim().replaceAll("[^A-Za-z0-9_.-]", "_");
+        if (name.isEmpty()) throw new IllegalStateException("name");
+        boolean running = id.equals(VmService.runningId());
+        if (running) {
+            switch (op) {
+                case "snapshotCreate": return QmpClient.hmp("savevm " + name, 600_000);
+                case "snapshotRestore": return QmpClient.hmp("loadvm " + name, 600_000);
+                default: return QmpClient.hmp("delvm " + name, 120_000);
+            }
+        }
+        File img = QemuEnv.bin(ctx, QemuEnv.BIN_IMG);
+        if (img == null) throw new IllegalStateException("qemu-img not found");
+        String flag = op.equals("snapshotCreate") ? "-c" : op.equals("snapshotRestore") ? "-a" : "-d";
+        Object[] res = QemuEnv.run(ctx, Arrays.asList(img.getPath(), "snapshot", flag, name, v.diskPath));
+        if ((Integer) res[0] != 0) throw new IllegalStateException(((String) res[1]).trim());
+        if (op.equals("snapshotRestore") && v.savedState) {
+            v.savedState = false;
+            Store.upsertVm(ctx, v);
+        }
+        return null;
+    }
+
+    /** VirtualBox'taki "Makine durumunu kaydet": RAM dahil her şeyi diske yazar ve kapatır. */
+    private Object saveState(String id) throws Exception {
+        if (id == null || !id.equals(VmService.runningId())) throw new IllegalStateException("VM is not running");
+        VmConfig v = snapshotVm(id);
+        QmpClient.hmp("savevm " + QemuCommand.SAVED_STATE, 900_000);
+        v = Store.getVm(ctx, id);
+        if (v != null) {
+            v.savedState = true;
+            Store.upsertVm(ctx, v);
+        }
+        try { QmpClient.exec("quit", null); } catch (Exception ignored) { }
+        return null;
     }
 
     private Object saveScreenshot(DisplaySession d) throws Exception {

@@ -6,9 +6,10 @@ import '../backend.dart';
 import '../models.dart';
 import '../state.dart';
 import '../widgets/common.dart';
+import 'wizard_screen.dart' show ramSteps, diskSteps;
 
-const _ramSteps = [8, 16, 32, 64, 128, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384];
-const _diskSteps = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144];
+const _ramSteps = ramSteps;
+const _diskSteps = diskSteps;
 
 const keyboardLayouts = {
   'en-us': 'English (US)',
@@ -44,7 +45,7 @@ class _EditorScreenState extends State<EditorScreen> {
   void initState() {
     super.initState();
     isNew = widget.vm == null;
-    v = widget.vm?.copy() ?? templates.first.create();
+    v = widget.vm?.copy() ?? osById('custom').create();
     _name = TextEditingController(text: v.name);
     _cpu = TextEditingController(text: v.cpuModel);
     _extra = TextEditingController(text: v.extraArgs);
@@ -75,40 +76,42 @@ class _EditorScreenState extends State<EditorScreen> {
     return l;
   }
 
-  void _applyTemplate(VmTemplate tp) {
-    final c = tp.create();
+  /// VirtualBox gibi: sürüm değişince yalnızca tür kaydı değişir; istenirse önerilen donanım uygulanır.
+  void _setOs(OsType os) {
     setState(() {
-      final keepName = _name.text.trim().isNotEmpty && _name.text != v.tpl.name && _name.text != t('Yeni VM', 'New VM');
-      c
-        ..isoPath = v.isoPath
-        ..diskPath = v.diskPath
-        ..floppyPath = v.floppyPath;
-      if (keepName) c.name = _name.text.trim();
-      v = c;
-      _name.text = v.name;
-      _cpu.text = v.cpuModel;
-      if (v.ramMb > _maxRam) v.ramMb = _ramSteps.lastWhere((s) => s <= _maxRam);
-      v.cpus = math.min(v.cpus, math.min(app.cores, 8));
+      v.template = os.id;
+      if (v.arch != os.arch) _setArchInner(os.arch);
     });
   }
 
-  void _setArch(String arch) {
+  void _applyRecommended() {
+    final os = v.os;
     setState(() {
-      v.arch = arch;
-      v.cpuModel = '';
-      _cpu.text = '';
-      if (arch == 'x86_16') {
-        v.vga = 'cirrus';
-        v.tablet = false;
-        if (v.ramMb > 256) v.ramMb = 32;
-        v.cpus = 1;
-      } else if (arch == 'x86_32') {
-        if (v.vga == 'std' && isNew) v.vga = 'cirrus';
-      } else {
-        if (v.vga == 'cirrus' && isNew) v.vga = 'std';
-      }
+      os.applyTo(v);
+      _cpu.text = v.cpuModel;
       if (v.ramMb > _maxRam) v.ramMb = _ramSteps.lastWhere((s) => s <= _maxRam);
+      v.cpus = math.min(v.cpus, math.max(1, math.min(app.cores, 8)));
     });
+    toast(context, t('Önerilen ayarlar uygulandı', 'Recommended settings applied'));
+  }
+
+  void _setArch(String arch) => setState(() => _setArchInner(arch));
+
+  void _setArchInner(String arch) {
+    v.arch = arch;
+    v.cpuModel = '';
+    _cpu.text = '';
+    if (arch == 'x86_16') {
+      v.vga = 'cirrus';
+      v.tablet = false;
+      if (v.ramMb > 256) v.ramMb = 32;
+      v.cpus = 1;
+    } else if (arch == 'x86_32') {
+      if (v.vga == 'std' && isNew) v.vga = 'cirrus';
+    } else {
+      if (v.vga == 'cirrus' && isNew) v.vga = 'std';
+    }
+    if (v.ramMb > _maxRam) v.ramMb = _ramSteps.lastWhere((s) => s <= _maxRam);
   }
 
   Future<void> _pick(void Function(String) set) async {
@@ -121,7 +124,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _createDisk() async {
-    var idx = _diskSteps.indexOf(v.tpl.diskMb);
+    var idx = _diskSteps.indexOf(v.os.diskMb);
     if (idx < 0) idx = 7;
     final free = (app.device['freeMb'] as num?)?.toInt();
     final size = await showDialog<int>(
@@ -206,54 +209,84 @@ class _EditorScreenState extends State<EditorScreen> {
           const ImportBanner(),
           if (_busy) const LinearProgressIndicator(),
 
-          // ---------------------------------------------------- şablonlar
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10, top: 8),
-            child: Text(t('Şablon', 'Template'), style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
-          ),
-          SizedBox(
-            height: 112,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: templates.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) {
-                final tp = templates[i];
-                final sel = v.template == tp.id;
-                return InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () => _applyTemplate(tp),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 96,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      color: sel ? cs.primary.withOpacity(0.16) : Theme.of(context).cardTheme.color,
-                      border: Border.all(color: sel ? cs.primary : cs.outlineVariant.withOpacity(0.4), width: sel ? 2 : 1),
-                    ),
-                    child: Column(children: [
-                      OsBadge(arch: tp.arch, label: tp.badge, size: 44),
-                      const SizedBox(height: 8),
-                      Text(tp.id == 'custom' ? t('Özel', 'Custom') : tp.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                      Text(archLabelOf(tp.arch), style: TextStyle(fontSize: 10.5, color: cs.onSurfaceVariant)),
-                    ]),
+          if (app.runningId == v.id && v.id.isNotEmpty)
+            Card(
+              color: cs.tertiaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Text(
+                  t('VM çalışıyor. Değişiklikler bir sonraki açılışta geçerli olur.',
+                      'The VM is running. Changes apply on the next start.'),
+                  style: TextStyle(color: cs.onTertiaryContainer),
+                ),
+              ),
+            ),
+          if (v.savedState)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Card(
+                color: cs.tertiaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Text(
+                    t('Bu VM\'in kayıtlı durumu var. Donanım değişirse kayıtlı durum yüklenemez; o zaman "Durumu at" de.',
+                        'This VM has a saved state. If hardware changes it can\'t be restored; then choose "Discard".'),
+                    style: TextStyle(color: cs.onTertiaryContainer),
                   ),
-                );
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          SectionCard(title: t('İşletim sistemi', 'Operating system'), icon: Icons.computer_rounded, children: [
+            DropdownButtonFormField<String>(
+              value: v.os.family,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: t('Tür', 'Type')),
+              items: [
+                for (final f in osFamilies)
+                  DropdownMenuItem(
+                    value: f.id,
+                    child: Row(children: [Icon(f.icon, size: 20), const SizedBox(width: 10), Text(f.name)]),
+                  ),
+              ],
+              onChanged: (f) {
+                if (f != null && f != v.os.family) _setOs(osOfFamily(f).first);
               },
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 8, 6, 14),
-            child: Row(children: [
-              Icon(Icons.lightbulb_outline_rounded, size: 16, color: cs.tertiary),
-              const SizedBox(width: 6),
-              Expanded(child: Text(v.tpl.tip, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant))),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey('ver-${v.os.family}'),
+              value: v.os.id,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: t('Sürüm', 'Version')),
+              items: [
+                for (final o in osOfFamily(v.os.family))
+                  DropdownMenuItem(
+                    value: o.id,
+                    child: Row(children: [
+                      OsBadge(arch: o.arch, label: o.badge, size: 26),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(o.name, overflow: TextOverflow.ellipsis)),
+                    ]),
+                  ),
+              ],
+              onChanged: (id) {
+                if (id != null) _setOs(osById(id));
+              },
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: Text(v.os.tip, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+              ),
+              TextButton.icon(
+                onPressed: _applyRecommended,
+                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                label: Text(t('Önerilen ayarlar', 'Recommended')),
+              ),
             ]),
-          ),
+          ]),
+          const SizedBox(height: 12),
 
           // ---------------------------------------------------- genel
           SectionCard(title: t('Genel', 'General'), icon: Icons.badge_outlined, children: [
@@ -359,6 +392,14 @@ class _EditorScreenState extends State<EditorScreen> {
               v.floppyPath,
               [_act(t('Seç', 'Choose'), () => _pick((p) => v.floppyPath = p))],
               () => setState(() => v.floppyPath = ''),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: v.sharedFolder,
+              onChanged: (x) => setState(() => v.sharedFolder = x),
+              title: Text(t('Paylaşılan klasör', 'Shared folder')),
+              subtitle: Text(t('Telefondan eklenen dosyalar VM\'de FAT sürücü olarak görünür (Ayrıntılar ekranından dosya ekle)',
+                  'Files added from the phone appear as a FAT drive in the VM (add files from the Details screen)')),
             ),
             const SizedBox(height: 10),
             Text(t('Önyükleme sırası', 'Boot from'), style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),

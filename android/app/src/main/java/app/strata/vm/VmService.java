@@ -97,6 +97,11 @@ public class VmService extends Service {
             QemuEnv.ensureRuntime(this, null);
             List<String> cmd = QemuCommand.build(this, vm);
             appendLog("$ " + String.join(" ", cmd));
+            if (vm.savedState) {
+                // kayıtlı durum bu açılışta kullanıldı
+                VmConfig fresh = Store.getVm(this, vm.id);
+                if (fresh != null) { fresh.savedState = false; Store.upsertVm(this, fresh); }
+            }
 
             ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true).directory(getFilesDir());
             pb.environment().putAll(QemuEnv.environment(this));

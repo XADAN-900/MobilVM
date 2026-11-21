@@ -45,6 +45,8 @@ class _DisplayScreenState extends State<DisplayScreen> {
   Timer? _hideTimer;
   bool _keyBar = false;
   bool _paused = false;
+  bool _landscape = false;
+  bool _savingState = false;
   final Set<int> _sticky = {};
   final Map<PhysicalKeyboardKey, int> _pressed = {};
   late final FocusNode _hwFocus = FocusNode(onKeyEvent: _onKey);
@@ -65,7 +67,11 @@ class _DisplayScreenState extends State<DisplayScreen> {
   @override
   void initState() {
     super.initState();
-    _mode = app.settings['mouseMode'] == 'trackpad' ? MouseMode.trackpad : MouseMode.touch;
+    // PS/2 fare (USB tablet kapalı) göreli çalışır: touchpad modu daha doğal
+    _mode = app.settings['mouseMode'] == 'trackpad' || !widget.vm.tablet || widget.vm.machine == 'isapc'
+        ? MouseMode.trackpad
+        : MouseMode.touch;
+    app.displayOpen = true;
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     Backend.fire('keepScreenOn', {'on': true});
     _sub = app.events.listen(_onEvent);
@@ -82,6 +88,8 @@ class _DisplayScreenState extends State<DisplayScreen> {
     Backend.fire('displayDetach');
     Backend.fire('keepScreenOn', {'on': false});
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations([]);
+    app.displayOpen = false;
     _hwFocus.dispose();
     _txtFocus.dispose();
     _txt.dispose();
@@ -131,6 +139,15 @@ class _DisplayScreenState extends State<DisplayScreen> {
   Future<void> _onVmEnded(int code) async {
     if (_ended) return;
     _ended = true;
+    if (_savingState) {
+      if (mounted) {
+        Navigator.of(context).popUntil((r) => r is! PopupRoute);
+        toast(context, t('Durum kaydedildi. Başlatınca kaldığın yerden devam eder.',
+            'State saved. Starting the VM resumes where you left off.'));
+        Navigator.pop(context);
+      }
+      return;
+    }
     final log = await Backend.call<String>('log') ?? '';
     if (!mounted) return;
     final lines = log.trim().split('\n');
@@ -497,6 +514,18 @@ class _DisplayScreenState extends State<DisplayScreen> {
       case 'log':
         if (mounted) await showLogSheet(context);
         break;
+      case 'paste':
+        await _pasteText();
+        break;
+      case 'rotate':
+        setState(() => _landscape = !_landscape);
+        await SystemChrome.setPreferredOrientations(_landscape
+            ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+            : []);
+        break;
+      case 'save':
+        await _saveState();
+        break;
       case 'reset':
         if (mounted &&
             await confirm(context, t('Yeniden başlatılsın mı?', 'Restart?'),
@@ -517,6 +546,69 @@ class _DisplayScreenState extends State<DisplayScreen> {
           await app.stop(force: true);
         }
         break;
+    }
+  }
+
+  /// Telefon panosundaki metni VM'e klavyeyle yazar.
+  Future<void> _pasteText() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text ?? '';
+    if (text.isEmpty) {
+      if (mounted) toast(context, t('Pano boş', 'Clipboard is empty'));
+      return;
+    }
+    if (text.length > 4000) {
+      if (mounted) toast(context, t('Metin çok uzun (en fazla 4000 karakter)', 'Text too long (max 4000 characters)'));
+      return;
+    }
+    var i = 0;
+    for (final r in text.runes) {
+      final c = String.fromCharCode(r);
+      if (c == '\r') continue;
+      if (c == '\n') {
+        _tap(Ks.enter);
+      } else {
+        _typeChar(c);
+      }
+      if (++i % 16 == 0) await Future.delayed(const Duration(milliseconds: 30));
+      if (!mounted || _ended) return;
+    }
+  }
+
+  /// VirtualBox'taki "Makine durumunu kaydet".
+  Future<void> _saveState() async {
+    if (!widget.vm.snapshotCapable) {
+      toast(context, t('Durum kaydetmek için qcow2 disk gerekir.', 'Saving state requires a qcow2 disk.'));
+      return;
+    }
+    final ok = await confirm(
+      context,
+      t('Durumu kaydet ve kapat', 'Save state and close'),
+      t('Bellek dahil her şey diske yazılır ve VM kapanır. Sonra başlattığında tam kaldığın yerden devam eder.',
+          'Everything including memory is written to disk and the VM closes. Next start resumes exactly where you left off.'),
+      ok: t('Kaydet', 'Save'),
+    );
+    if (!ok || !mounted) return;
+    _savingState = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(children: [
+          const CircularProgressIndicator(),
+          const SizedBox(width: 20),
+          Expanded(child: Text(t('Durum kaydediliyor…', 'Saving state…'))),
+        ]),
+      ),
+    );
+    try {
+      await Backend.call('saveState', {'id': widget.vm.id});
+    } catch (e) {
+      _savingState = false;
+      if (mounted) {
+        Navigator.of(context).pop();
+        toast(context, '${t('Kaydedilemedi', 'Could not save')}: $e');
+      }
     }
   }
 
@@ -697,8 +789,12 @@ class _DisplayScreenState extends State<DisplayScreen> {
                   _mi('shot', Icons.photo_camera_outlined, t('Ekran görüntüsü', 'Screenshot')),
                   _mi('cd', Icons.album_outlined, t('CD değiştir', 'Change CD')),
                   _mi('eject', Icons.eject_outlined, t('CD\'yi çıkar', 'Eject CD')),
+                  _mi('paste', Icons.content_paste_rounded, t('Panodan yaz', 'Type clipboard')),
+                  _mi('rotate', Icons.screen_rotation_rounded,
+                      _landscape ? t('Yatay kilidi kaldır', 'Unlock rotation') : t('Yatay ekrana kilitle', 'Lock landscape')),
                   _mi('log', Icons.receipt_long_outlined, t('Günlük', 'Log')),
                   const PopupMenuDivider(),
+                  _mi('save', Icons.save_alt_rounded, t('Durumu kaydet ve kapat', 'Save state and close')),
                   _mi('reset', Icons.restart_alt_rounded, t('Yeniden başlat', 'Restart')),
                   _mi('acpi', Icons.power_settings_new_rounded, t('Kapat (ACPI)', 'Shut down (ACPI)')),
                   _mi('kill', Icons.dangerous_outlined, t('Zorla kapat', 'Force stop')),

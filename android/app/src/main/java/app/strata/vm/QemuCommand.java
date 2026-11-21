@@ -12,6 +12,7 @@ final class QemuCommand {
     static final int VNC_DISPLAY = 1;
     static final int VNC_PORT = 5900 + VNC_DISPLAY;
     static final int QMP_PORT = 4445;
+    static final String SAVED_STATE = "strata-saved-state";
 
     private QemuCommand() {}
 
@@ -29,7 +30,7 @@ final class QemuCommand {
         int tb = Store.settingInt(c, "tbSize", 256);
 
         List<String> a = new ArrayList<>();
-        add(a, bin.getPath(), "-L", QemuEnv.shareDir(c).getPath(), "-name", vm.name);
+        add(a, bin.getPath(), "-L", QemuEnv.shareDir(c).getPath(), "-name", esc(vm.name.isEmpty() ? "VM" : vm.name));
 
         String machine = vm.machine.isEmpty() ? "pc" : vm.machine;
         boolean isa = machine.equals("isapc");
@@ -50,6 +51,12 @@ final class QemuCommand {
         } else {
             add(a, "-drive", "id=cd0,if=ide,index=2,media=cdrom");
         }
+        if (vm.sharedFolder) {
+            // Telefondaki klasör VM'de ikinci sabit disk (FAT) olarak görünür.
+            // snapshot=on: misafirin yazdıkları geçici katmana gider, telefondaki dosyalar korunur.
+            add(a, "-drive", "id=share0,file=fat:" + QemuEnv.sharedDir(c, vm.id).getPath()
+                    + ",format=raw,if=ide,index=1,media=disk,snapshot=on");
+        }
         if (!vm.floppyPath.isEmpty()) {
             add(a, "-drive", "id=fd0,file=" + esc(vm.floppyPath) + ",format=raw,if=floppy,index=0");
         }
@@ -57,7 +64,9 @@ final class QemuCommand {
         // Ağ: QEMU'nun dahili NAT'ı (slirp) + port yönlendirme
         if (vm.net) {
             add(a, "-netdev", "user,id=n0" + hostForwards(vm.portForwards));
-            add(a, "-device", (isa ? "ne2k_isa" : (vm.nic.isEmpty() ? "e1000" : vm.nic)) + ",netdev=n0");
+            // PCI kartlarda PXE ROM'u kapat: ek firmware dosyasına gerek kalmaz
+            add(a, "-device", isa ? "ne2k_isa,netdev=n0"
+                    : (vm.nic.isEmpty() ? "e1000" : vm.nic) + ",netdev=n0,romfile=");
         } else {
             add(a, "-nic", "none");
         }
@@ -71,6 +80,7 @@ final class QemuCommand {
         add(a, "-display", "none", "-vnc", "127.0.0.1:" + VNC_DISPLAY);
         add(a, "-qmp", "tcp:127.0.0.1:" + QMP_PORT + ",server=on,wait=off");
         if (!vm.keyboard.trim().isEmpty()) add(a, "-k", vm.keyboard.trim());
+        if (vm.savedState) add(a, "-loadvm", SAVED_STATE);
 
         a.addAll(splitArgs(vm.extraArgs));
         return a;

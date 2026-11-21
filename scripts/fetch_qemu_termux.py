@@ -258,6 +258,16 @@ def collect(staging, links):
                 z.write(f, f"share/qemu/{rel}"); count += 1
     with zipfile.ZipFile(ASSET_ZIP) as z:
         total = sum(i.file_size for i in z.infolist())
+        names = set(z.namelist())
+    # Uygulamanın kullandığı donanımlar için gereken firmware / klavye dosyaları
+    required = ["bios-256k.bin", "vgabios-cirrus.bin", "vgabios-stdvga.bin", "vgabios-vmware.bin",
+                "vgabios-virtio.bin", "kvmvapic.bin", "linuxboot_dma.bin"]
+    keymaps = ["en-us", "tr", "en-gb", "de", "fr", "es", "it", "pt-br", "ru", "ja"]
+    missing = [r for r in required if f"share/qemu/{r}" not in names]
+    missing += [f"keymaps/{k}" for k in keymaps if f"share/qemu/keymaps/{k}" not in names]
+    print("share/qemu:", " ".join(sorted(n[len("share/qemu/"):] for n in names
+                                         if n.startswith("share/qemu/") and "/keymaps/" not in n)))
+    print("EKSIK:" if missing else "✓ Gerekli tüm firmware ve klavye dosyaları mevcut", " ".join(missing))
     with open(ASSET_INFO, "w") as f:
         json.dump({"files": count, "bytes": total}, f)
     print(f"✓ {count} dosya -> assets/qemu-runtime.zip ({os.path.getsize(ASSET_ZIP) // (1 << 20)} MB)")

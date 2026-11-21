@@ -22,10 +22,14 @@ final class QmpClient {
     private QmpClient() {}
 
     /** Komutu çalıştırır, "return" değerini Java Map/List/primitive olarak döndürür. */
-    static synchronized Object exec(String command, JSONObject args) throws Exception {
+    static Object exec(String command, JSONObject args) throws Exception {
+        return exec(command, args, 8000);
+    }
+
+    static synchronized Object exec(String command, JSONObject args, int timeoutMs) throws Exception {
         try (Socket s = new Socket()) {
             s.connect(new InetSocketAddress("127.0.0.1", QemuCommand.QMP_PORT), 2000);
-            s.setSoTimeout(8000);
+            s.setSoTimeout(timeoutMs);
             BufferedReader r = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
             Writer w = new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8);
             r.readLine(); // karşılama
@@ -39,7 +43,18 @@ final class QmpClient {
     }
 
     static Object hmp(String commandLine) throws Exception {
-        return exec("human-monitor-command", new JSONObject().put("command-line", commandLine));
+        return hmp(commandLine, 8000);
+    }
+
+    /** HMP komutu çalıştırır; çıktıda hata varsa istisna atar. */
+    static String hmp(String commandLine, int timeoutMs) throws Exception {
+        Object r = exec("human-monitor-command", new JSONObject().put("command-line", commandLine), timeoutMs);
+        String out = r == null ? "" : r.toString().trim();
+        String low = out.toLowerCase(java.util.Locale.ROOT);
+        if (low.startsWith("error") || low.contains("error:") || low.contains("could not") || low.contains("failed")) {
+            throw new IOException(out);
+        }
+        return out;
     }
 
     private static void send(Writer w, JSONObject o) throws IOException {

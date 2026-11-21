@@ -28,6 +28,8 @@ final class VmConfig {
     boolean tablet = true;
     boolean rtcLocal = true;
     String extraArgs = "";
+    boolean savedState = false;    // "Durumu kaydet ile kapatıldı" -> sonraki açılışta -loadvm
+    boolean sharedFolder = false;  // telefondaki klasörü FAT sürücü olarak bağla
     long createdAt = 0;
     long lastRunAt = 0;
 
@@ -53,6 +55,8 @@ final class VmConfig {
         v.tablet = bool(m, "tablet", v.tablet);
         v.rtcLocal = bool(m, "rtcLocal", v.rtcLocal);
         v.extraArgs = str(m, "extraArgs", v.extraArgs);
+        v.savedState = bool(m, "savedState", v.savedState);
+        v.sharedFolder = bool(m, "sharedFolder", v.sharedFolder);
         v.createdAt = num(m, "createdAt", 0);
         v.lastRunAt = num(m, "lastRunAt", 0);
         return v;
@@ -80,6 +84,8 @@ final class VmConfig {
         m.put("tablet", tablet);
         m.put("rtcLocal", rtcLocal);
         m.put("extraArgs", extraArgs);
+        m.put("savedState", savedState);
+        m.put("sharedFolder", sharedFolder);
         m.put("createdAt", createdAt);
         m.put("lastRunAt", lastRunAt);
         return m;

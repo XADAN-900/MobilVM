@@ -1,16 +1,50 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../state.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
+import '../backend.dart';
+import 'details_screen.dart';
 import 'display_screen.dart';
 import 'editor_screen.dart';
+import 'wizard_screen.dart';
 import 'images_screen.dart';
 import 'settings_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  StreamSubscription? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ekran kapalıyken VM hata ile kapanırsa haber ver
+    _sub = app.events.listen((e) {
+      if (e['type'] != 'vm' || e['running'] != false || app.displayOpen || !mounted) return;
+      final code = (e['exitCode'] as num?)?.toInt() ?? 0;
+      if (code == 0) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
+        content: Text(t('Sanal makine beklenmedik şekilde kapandı (kod $code)', 'The VM stopped unexpectedly (code $code)')),
+        action: SnackBarAction(label: t('Günlük', 'Log'), onPressed: () => showLogSheet(context)),
+      ));
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +54,7 @@ class HomeScreen extends StatelessWidget {
         final running = app.runningVm;
         return Scaffold(
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => openEditor(context),
+            onPressed: () => openWizard(context),
             icon: const Icon(Icons.add_rounded),
             label: Text(t('Yeni VM', 'New VM')),
           ),
@@ -94,6 +128,15 @@ class HomeScreen extends StatelessWidget {
 Future<void> openEditor(BuildContext context, [VmConfig? vm]) =>
     Navigator.push(context, MaterialPageRoute(builder: (_) => EditorScreen(vm: vm)));
 
+Future<void> openWizard(BuildContext context) async {
+  final vm = await Navigator.push<VmConfig>(context, MaterialPageRoute(builder: (_) => const WizardScreen()));
+  if (vm == null || !context.mounted) return;
+  await Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(vmId: vm.id)));
+}
+
+void openDetails(BuildContext context, VmConfig vm) =>
+    Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsScreen(vmId: vm.id)));
+
 Future<void> startVm(BuildContext context, VmConfig vm) async {
   if (app.runningId == vm.id) {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => DisplayScreen(vm: vm)));
@@ -113,7 +156,12 @@ Future<void> startVm(BuildContext context, VmConfig vm) async {
     toast(context, t('QEMU motoru bu APK\'da yok.', 'The QEMU engine is missing from this APK.'));
     return;
   }
-  await app.start(vm.id);
+  try {
+    await app.start(vm.id);
+  } catch (e) {
+    if (context.mounted) toast(context, '${t('Başlatılamadı', 'Could not start')}: $e');
+    return;
+  }
   if (context.mounted) {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => DisplayScreen(vm: vm)));
   }
@@ -245,7 +293,7 @@ class _EmptyState extends StatelessWidget {
         ),
         const SizedBox(height: 22),
         FilledButton.icon(
-          onPressed: () => openEditor(context),
+          onPressed: () => openWizard(context),
           icon: const Icon(Icons.add_rounded),
           label: Text(t('İlk VM\'ini oluştur', 'Create your first VM')),
         ),
@@ -272,11 +320,12 @@ class _VmCard extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _menu(context),
+        onTap: () => openDetails(context, vm),
+        onLongPress: () => _menu(context),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(children: [
-            OsBadge(arch: vm.arch, label: vm.template == 'custom' ? vm.archLabel.split('-').first : vm.tpl.badge),
+            OsBadge(arch: vm.arch, label: vm.os.badge),
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -286,6 +335,8 @@ class _VmCard extends StatelessWidget {
                     style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 6),
                 Wrap(spacing: 6, runSpacing: 6, children: [
+                  if (running) InfoChip(t('çalışıyor', 'running'), color: const Color(0xFF4ADE80)),
+                  if (!running && vm.savedState) InfoChip(t('kayıtlı', 'saved'), color: const Color(0xFFFBBF24)),
                   InfoChip(vm.archLabel, color: archColor(vm.arch)),
                   InfoChip(fmtMb(vm.ramMb), icon: Icons.memory_rounded),
                   InfoChip('${vm.cpus} CPU'),
@@ -321,7 +372,7 @@ class _VmCard extends StatelessWidget {
       builder: (c) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
-            leading: OsBadge(arch: vm.arch, label: vm.tpl.badge, size: 40),
+            leading: OsBadge(arch: vm.arch, label: vm.os.badge, size: 40),
             title: Text(vm.name, style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text('${vm.archLabel} · ${fmtMb(vm.ramMb)} · ${vm.cpus} CPU'),
           ),
@@ -335,8 +386,16 @@ class _VmCard extends StatelessWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.info_outline_rounded),
+            title: Text(t('Ayrıntılar ve anlık görüntüler', 'Details & snapshots')),
+            onTap: () {
+              Navigator.pop(c);
+              openDetails(context, vm);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.edit_rounded),
-            title: Text(t('Düzenle', 'Edit')),
+            title: Text(t('Ayarlar', 'Settings')),
             onTap: () {
               Navigator.pop(c);
               openEditor(context, vm);
@@ -347,12 +406,24 @@ class _VmCard extends StatelessWidget {
             title: Text(t('Kopyasını oluştur', 'Duplicate')),
             onTap: () async {
               Navigator.pop(c);
+              final messenger = ScaffoldMessenger.of(context);
+              messenger.showSnackBar(SnackBar(content: Text(t('Kopyalanıyor…', 'Cloning…'))));
               final copy = vm.copy()
                 ..id = ''
                 ..createdAt = 0
                 ..lastRunAt = 0
+                ..savedState = false
                 ..name = '${vm.name} (${t('kopya', 'copy')})';
-              await app.save(copy);
+              try {
+                // Disk paylaşılmasın: VirtualBox'taki gibi tam kopya
+                if (vm.diskPath.isNotEmpty) {
+                  copy.diskPath = await Backend.call<String>('cloneDisk', {'path': vm.diskPath, 'name': copy.name}) ?? '';
+                }
+                await app.save(copy);
+                messenger.showSnackBar(SnackBar(content: Text(t('Kopya oluşturuldu', 'Clone created'))));
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text('$e')));
+              }
             },
           ),
           ListTile(
@@ -360,6 +431,10 @@ class _VmCard extends StatelessWidget {
             title: Text(t('Sil', 'Delete'), style: TextStyle(color: Theme.of(c).colorScheme.error)),
             onTap: () {
               Navigator.pop(c);
+              if (app.runningId == vm.id) {
+                toast(context, t('Çalışan VM silinemez. Önce kapat.', 'A running VM can\'t be deleted. Stop it first.'));
+                return;
+              }
               _delete(context);
             },
           ),

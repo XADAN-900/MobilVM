@@ -51,6 +51,16 @@ final class QemuEnv {
         return d;
     }
 
+    /** VM'e FAT sürücü olarak gösterilen klasör. */
+    static File sharedDir(Context c, String vmId) {
+        File base = c.getExternalFilesDir(null);
+        if (base == null) base = c.getFilesDir();
+        File d = new File(new File(base, "shared"), vmId.replaceAll("[^A-Za-z0-9-]", "_"));
+        //noinspection ResultOfMethodCallIgnored
+        d.mkdirs();
+        return d;
+    }
+
     static File bin(Context c, String name) {
         File f = new File(nativeDir(c), name);
         return f.exists() ? f : null;

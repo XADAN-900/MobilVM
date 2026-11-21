@@ -7,7 +7,13 @@
 Logodaki üç katman uygulamanın üç modunu temsil eder: **16-bit** (camgöbeği), **32-bit** (çivit), **64-bit** (mor).
 
 ## Özellikler
-- **Hazır şablonlar**: FreeDOS, MS-DOS, Windows 3.1 / 98 / XP / 7, Alpine, Debian, 32-bit Linux, özel
+- **VirtualBox tarzı kurulum sihirbazı**: Ad ve işletim sistemi → Donanım → Sanal disk → Özet
+- **Tür + sürüm seçimi**: Windows (3.1'den 11'e), Linux (Alpine, Debian, Ubuntu, Arch, Fedora, Mint, Tiny Core, antiX...), DOS, BSD, ReactOS, Haiku, KolibriOS; her sürüm için önerilen donanım
+- **Otomatik algılama**: VM adından veya ISO dosya adından sistem türü seçilir
+- **Anlık görüntüler** (qcow2): al, geri yükle, sil; VM çalışırken bellek dahil
+- **Durumu kaydet ve kapat**: sonraki açılışta tam kaldığın yerden devam eder
+- **Paylaşılan klasör**: telefondan eklenen dosyalar VM'de FAT sürücü olarak görünür
+- **Klonlama**: VM kopyalanırken disk de bağımsız kopyalanır
 - **ISO, IMG, QCOW2, VDI, VMDK, VHD** ve disket desteği; uygulama içinden boş qcow2 disk oluşturma
 - **Ekran**: GPU texture ile çizim, iki parmakla yakınlaştırma/kaydırma, keskin veya yumuşak ölçekleme
 - **Fare**: dokunmatik (birebir) ve touchpad modu; uzun bas = sağ tık, iki parmak = tekerlek
@@ -15,6 +21,7 @@ Logodaki üç katman uygulamanın üç modunu temsil eder: **16-bit** (camgöbe�
 - **VM kontrolü**: duraklat/devam, yeniden başlat, ACPI kapatma, çalışırken CD değiştir/çıkar, ekran görüntüsü
 - **Ağ**: NAT ile internet, ağ kartı seçimi, port yönlendirme (ör. SSH için `tcp:2222:22`)
 - **Arka plan**: VM ön plan servisinde çalışır, bildirimden kapatılabilir
+- **Panodan yaz**: telefonda kopyaladığın metni VM'e yazar; yatay ekran kilidi
 - **İmaj kütüphanesi**, canlı QEMU günlüğü, Türkçe / English, koyu / açık tema
 
 ## Mimari
