@@ -83,6 +83,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Testlerde Java tarafından gelmiş gibi olay üretmek için.
+  @visibleForTesting
+  void debugEmit(Map<String, dynamic> e) => _onEvent(e);
+
   void _onEvent(Map<String, dynamic> e) {
     switch (e['type']) {
       case 'setup':

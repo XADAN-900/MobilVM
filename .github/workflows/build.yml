@@ -46,6 +46,7 @@ jobs:
       - name: İşletim sistemi algılama testleri
         env:
           STRATA_TEST_MEDIA: ${{ runner.temp }}/media
+          STRATA_TEST_FONTS: ${{ runner.temp }}/media/fonts
         run: flutter test --reporter expanded
 
       - name: APK derle

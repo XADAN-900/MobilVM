@@ -4,7 +4,16 @@ set -euo pipefail
 OUT="${1:?çıktı klasörü}"
 mkdir -p "$OUT"
 WORK="$(mktemp -d)"
-sudo apt-get install -y -qq nasm xorriso grub-pc-bin grub-common mtools >/dev/null
+sudo apt-get install -y -qq nasm xorriso grub-pc-bin grub-common mtools fonts-roboto fonts-noto-core >/dev/null
+
+# Arayüz testleri için gerçek fontlar (Roboto ağırlıkları + Arapça)
+FONTS="${STRATA_TEST_FONTS:-$OUT/fonts}"
+mkdir -p "$FONTS"
+for f in Roboto-Regular Roboto-Medium Roboto-Bold Roboto-Black NotoSansArabic-Regular NotoSansArabic-Bold; do
+  src="$(find /usr/share/fonts -name "$f.ttf" | head -1)"
+  if [ -n "$src" ]; then cp "$src" "$FONTS/"; fi
+done
+ls "$FONTS"
 
 # --- 1) Kendi yapımı OS: GRUB + Multiboot2, 32-bit ve 64-bit (uzun moda geçen) çekirdek
 make_kernel() { # $1=ad $2=ekstra komut

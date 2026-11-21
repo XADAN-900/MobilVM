@@ -31,10 +31,22 @@ ThemeData buildTheme(Brightness b) {
       surfaceTintColor: Colors.transparent,
       systemOverlayStyle: dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
     ),
+    // Dolgulu kutular: başlık (label) kutunun İÇİNDE durur, kenara binmez
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: dark ? const Color(0xFF1D2140) : const Color(0xFFF0EEF8),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      contentPadding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
+      border: UnderlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      enabledBorder: UnderlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      disabledBorder: UnderlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      focusedBorder: UnderlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: scheme.primary, width: 2),
+      ),
+      errorBorder: UnderlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: scheme.error, width: 2),
+      ),
     ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
   );
