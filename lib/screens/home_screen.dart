@@ -369,8 +369,13 @@ class _VmCard extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
+      // İçerik uzun olsa da ekrana sığsın, gerekirse kaydırılsın; hiçbir şey altta kalmasın
+      isScrollControlled: true,
+      useSafeArea: true,
       builder: (c) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(c).padding.bottom + 8),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             leading: OsBadge(arch: vm.arch, label: vm.os.badge, size: 40),
             title: Text(vm.name, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -439,7 +444,8 @@ class _VmCard extends StatelessWidget {
             },
           ),
           const SizedBox(height: 8),
-        ]),
+          ]),
+        ),
       ),
     );
   }
