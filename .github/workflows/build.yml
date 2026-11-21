@@ -45,7 +45,10 @@ jobs:
 
       - name: QEMU açılış testi (tüm mimariler, gerçek QEMU ile)
         run: |
-          sudo apt-get install -y -qq qemu-system-x86 qemu-system-arm qemu-system-ppc qemu-system-misc qemu-utils >/dev/null
+          sudo apt-get install -y -qq qemu-system-x86 qemu-system-arm qemu-system-ppc qemu-utils >/dev/null
+          # RISC-V: Ubuntu 24.04'te ayrı paket, eskilerde qemu-system-misc içinde
+          sudo apt-get install -y -qq qemu-system-riscv >/dev/null 2>&1 || sudo apt-get install -y -qq qemu-system-misc >/dev/null
+          which qemu-system-riscv64
           qemu-system-x86_64 --version | head -1
           mkdir -p "$RUNNER_TEMP/rt" "$RUNNER_TEMP/smoke-classes"
           unzip -q -o android/app/src/main/assets/qemu-runtime.zip 'share/*' -d "$RUNNER_TEMP/rt"
