@@ -63,7 +63,7 @@ final class Store {
 
     static Map<String, Object> defaultSettings() {
         Map<String, Object> m = new HashMap<>();
-        m.put("language", "system");   // system | tr | en
+        m.put("language", "en");       // en | de | fr | es | pt | ru | tr | ar
         m.put("theme", "dark");        // system | dark | light
         m.put("filter", "smooth");     // smooth | sharp
         m.put("mouseMode", "touch");   // touch | trackpad

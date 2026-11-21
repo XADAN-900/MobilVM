@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notif_channel">Máquina virtual</string>
+    <string name="notif_starting">Iniciando…</string>
+    <string name="notif_running">%1$s está en marcha</string>
+    <string name="notif_stop">Apagar</string>
+</resources>

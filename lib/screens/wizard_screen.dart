@@ -70,7 +70,7 @@ class _WizardScreenState extends State<WizardScreen> {
       if (fromUser) {
         _nameTouchedOs = true;
         _detectNote = null;
-        if (_autoName) _name.text = os.name;
+        if (_autoName) _name.text = os.label;
       }
       _os = os;
       _family = os.family;
@@ -138,9 +138,9 @@ class _WizardScreenState extends State<WizardScreen> {
       _nameTouchedOs = false;
       final lines = d.findings.take(6).map((f) => '• $f').join('\n');
       final heavyWarn = d.ramHint != null && maxRamFor(_vm.arch) < d.ramHint!
-          ? '\n⚠ ${t('Bu sistem ${fmtMb(d.ramHint!)} RAM ister; telefonun en fazla ${fmtMb(maxRamFor(_vm.arch))} verebilir.', 'This OS wants ${fmtMb(d.ramHint!)} RAM; this phone can give at most ${fmtMb(maxRamFor(_vm.arch))}.')}'
+          ? '\n⚠ ${t('Bu sistem {0} RAM ister; telefonun en fazla {1} verebilir.', 'This OS wants {0} RAM; this phone can give at most {1}.', [fmtMb(d.ramHint!), fmtMb(maxRamFor(_vm.arch))])}'
           : '';
-      _detectNote = '${t('Algılandı', 'Detected')}: ${d.custom ? '${d.source} (${archLabelOf(d.os.arch)})' : d.os.name}'
+      _detectNote = '${t('Algılandı', 'Detected')}: ${d.custom ? '${d.source} (${archLabelOf(d.os.arch)})' : d.os.label}'
           '${d.custom ? '' : '  ·  ${d.source}'}'
           '${d.uefi ? '\n• UEFI' : ''}'
           '${lines.isEmpty ? '' : '\n$lines'}'
@@ -424,7 +424,7 @@ class _WizardScreenState extends State<WizardScreen> {
                 child: Row(children: [
                   OsBadge(arch: o.arch, label: o.badge, size: 26),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(o.name, overflow: TextOverflow.ellipsis)),
+                  Expanded(child: Text(o.label, overflow: TextOverflow.ellipsis)),
                   Text(archLabelOf(o.arch), style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
                 ]),
               ),
@@ -568,7 +568,7 @@ class _WizardScreenState extends State<WizardScreen> {
           padding: const EdgeInsets.fromLTRB(8, 6, 16, 6),
           child: Column(children: [
             radio(_DiskMode.create, t('Yeni sanal disk oluştur', 'Create a new virtual disk'),
-                t('Önerilen: ${fmtMb(_os.diskMb == 0 ? 1024 : _os.diskMb)} (qcow2)', 'Recommended: ${fmtMb(_os.diskMb == 0 ? 1024 : _os.diskMb)} (qcow2)')),
+                t('Önerilen: {0} (qcow2)', 'Recommended: {0} (qcow2)', [fmtMb(_os.diskMb == 0 ? 1024 : _os.diskMb)])),
             radio(_DiskMode.existing, t('Var olan disk dosyasını kullan', 'Use an existing disk file'),
                 'IMG, QCOW2, VDI, VMDK, VHD'),
             radio(_DiskMode.none, t('Disk ekleme', 'Do not add a disk'),
@@ -627,7 +627,7 @@ class _WizardScreenState extends State<WizardScreen> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(_name.text.trim(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                  Text('${_os.name} · ${archLabelOf(_os.arch)}', style: TextStyle(color: cs.onSurfaceVariant)),
+                  Text('${_os.label} · ${archLabelOf(_os.arch)}', style: TextStyle(color: cs.onSurfaceVariant)),
                 ]),
               ),
             ]),
@@ -683,7 +683,7 @@ class _OsPreview extends StatelessWidget {
         const SizedBox(width: 14),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(os.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            Text(os.label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             const SizedBox(height: 4),
             Wrap(spacing: 6, runSpacing: 4, children: [
               InfoChip(archLabelOf(os.arch), color: archColor(os.arch)),

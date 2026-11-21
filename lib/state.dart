@@ -4,7 +4,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import 'backend.dart';
+import 'i18n.dart';
 import 'models.dart';
+
+export 'i18n.dart';
 
 /// Uygulamanın tek durum nesnesi.
 class AppState extends ChangeNotifier {
@@ -14,7 +17,7 @@ class AppState extends ChangeNotifier {
 
   Map<String, dynamic> device = {};
   Map<String, dynamic> settings = {
-    'language': 'system',
+    'language': 'en',
     'theme': 'dark',
     'filter': 'smooth',
     'mouseMode': 'touch',
@@ -35,10 +38,12 @@ class AppState extends ChangeNotifier {
   Stream<Map<String, dynamic>> get events => _events.stream;
   StreamSubscription? _sub;
 
+  /// Seçili dil. İlk açılışta İngilizce; eski sürümlerdeki "system" ayarı cihaz diline çevrilir.
   String get lang {
-    final l = settings['language'] as String? ?? 'system';
-    if (l == 'tr' || l == 'en') return l;
-    return ui.PlatformDispatcher.instance.locale.languageCode == 'tr' ? 'tr' : 'en';
+    final l = settings['language'] as String? ?? 'en';
+    if (languages.containsKey(l)) return l;
+    final device = ui.PlatformDispatcher.instance.locale.languageCode;
+    return languages.containsKey(device) ? device : 'en';
   }
 
   bool get qemuOk => device['qemu64'] == true || device['qemu32'] == true;
@@ -147,6 +152,3 @@ class AppState extends ChangeNotifier {
 }
 
 final app = AppState();
-
-/// Basit iki dilli metin: t('Türkçe', 'English').
-String t(String tr, String en) => app.lang == 'tr' ? tr : en;

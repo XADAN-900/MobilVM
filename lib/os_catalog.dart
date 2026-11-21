@@ -72,12 +72,15 @@ class OsType {
     this.tipEn = '',
   });
 
-  String get tip => t(tipTr, tipEn);
+  String get tip => tipEn.isEmpty ? '' : t(tipTr, tipEn);
   OsFamily get fam => familyById(family);
+
+  /// Seçili dilde görünen ad (özel adlar aynı kalır, "Other / Unknown" gibi genel adlar çevrilir).
+  String get label => tx(name);
 
   /// Bu sürüm için önerilen ayarlarla yeni bir VM.
   VmConfig create() => applyTo(VmConfig(
-        name: name,
+        name: label,
         keyboard: (app.settings['keyboard'] as String?) ?? 'en-us',
       ));
 
@@ -153,9 +156,9 @@ const osCatalog = <OsType>[
       ram: 256, diskMb: 1024, tipTr: '~20 MB, saniyeler içinde açılır', tipEn: '~20 MB, boots in seconds'),
   OsType(id: 'antix', family: 'linux', name: 'antiX (32-bit)', badge: 'AX', arch: 'x86_32', cpu: 'pentium3',
       ram: 512, diskMb: 8192),
-  OsType(id: 'linux32', family: 'linux', name: 'Linux (32-bit, diğer)', badge: 'L32', arch: 'x86_32',
+  OsType(id: 'linux32', family: 'linux', name: 'Linux (32-bit, other)', badge: 'L32', arch: 'x86_32',
       cpu: 'pentium3', ram: 512, diskMb: 8192),
-  OsType(id: 'linux64', family: 'linux', name: 'Linux (64-bit, diğer)', badge: 'L64', arch: 'x86_64', ram: 1024,
+  OsType(id: 'linux64', family: 'linux', name: 'Linux (64-bit, other)', badge: 'L64', arch: 'x86_64', ram: 1024,
       cpus: 2, diskMb: 16384),
 
   // ------------------------------------------------------------ DOS
@@ -165,7 +168,7 @@ const osCatalog = <OsType>[
   OsType(id: 'msdos', family: 'dos', name: 'MS-DOS 6.22', badge: 'DOS', arch: 'x86_16', cpu: '486',
       vga: 'cirrus', ram: 16, diskMb: 256, boot: 'floppy', net: false, tablet: false,
       tipTr: 'Kurulum disketi (.img) ile açılır', tipEn: 'Boots from a setup floppy (.img)'),
-  OsType(id: 'dos_other', family: 'dos', name: 'DOS (diğer)', badge: 'DOS', arch: 'x86_16', cpu: '486',
+  OsType(id: 'dos_other', family: 'dos', name: 'DOS (other)', badge: 'DOS', arch: 'x86_16', cpu: '486',
       vga: 'cirrus', ram: 16, diskMb: 256, net: false, tablet: false),
 
   // ------------------------------------------------------------ BSD
@@ -185,11 +188,11 @@ const osCatalog = <OsType>[
   OsType(id: 'kolibri', family: 'other', name: 'KolibriOS', badge: 'KO', arch: 'x86_32', cpu: 'pentium3',
       ram: 128, diskMb: 0, tipTr: 'Tamamen ISO/disketten çalışır, disk gerekmez',
       tipEn: 'Runs entirely from ISO/floppy, no disk needed'),
-  OsType(id: 'other16', family: 'other', name: 'Diğer / Bilinmeyen (16-bit)', badge: '16', arch: 'x86_16',
+  OsType(id: 'other16', family: 'other', name: 'Other / Unknown (16-bit)', badge: '16', arch: 'x86_16',
       cpu: '486', vga: 'cirrus', ram: 16, diskMb: 256, net: false, tablet: false),
-  OsType(id: 'other32', family: 'other', name: 'Diğer / Bilinmeyen (32-bit)', badge: '32', arch: 'x86_32',
+  OsType(id: 'other32', family: 'other', name: 'Other / Unknown (32-bit)', badge: '32', arch: 'x86_32',
       cpu: 'pentium3', ram: 512, diskMb: 8192),
-  OsType(id: 'custom', family: 'other', name: 'Diğer / Bilinmeyen (64-bit)', badge: '64', arch: 'x86_64',
+  OsType(id: 'custom', family: 'other', name: 'Other / Unknown (64-bit)', badge: '64', arch: 'x86_64',
       ram: 1024, cpus: 2, diskMb: 16384),
 ];
 
@@ -280,9 +283,9 @@ class OsDetection {
   /// VM için önerilen ad: türetilmiş dağıtımlarda kendi adı (ör. "TyrOS 1.0"), yoksa sürüm adı.
   String get suggestedName {
     final p = productName?.trim() ?? '';
-    if (p.isEmpty) return os.name;
+    if (p.isEmpty) return os.label;
     final key = os.name.split(RegExp(r'[ (]')).first.toLowerCase();
-    if (!custom && p.toLowerCase().contains(key)) return os.name;
+    if (!custom && p.toLowerCase().contains(key)) return os.label;
     return p.length > 40 ? p.substring(0, 40) : p;
   }
 

@@ -34,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (code == 0) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 8),
-        content: Text(t('Sanal makine beklenmedik şekilde kapandı (kod $code)', 'The VM stopped unexpectedly (code $code)')),
+        content: Text(t('Sanal makine beklenmedik şekilde kapandı (kod {0})', 'The VM stopped unexpectedly (code {0})', [code])),
         action: SnackBarAction(label: t('Günlük', 'Log'), onPressed: () => showLogSheet(context)),
       ));
     });
@@ -456,7 +456,7 @@ class _VmCard extends StatelessWidget {
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, set) => AlertDialog(
-          title: Text(t('"${vm.name}" silinsin mi?', 'Delete "${vm.name}"?')),
+          title: Text(t('"{0}" silinsin mi?', 'Delete "{0}"?', [vm.name])),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(t('VM ayarları silinir. ISO dosyaları kütüphanede kalır.',
                 'The VM settings are removed. ISO files stay in the library.')),

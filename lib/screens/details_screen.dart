@@ -150,7 +150,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(os.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                          Text(os.label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                           const SizedBox(height: 6),
                           Row(children: [
                             Container(

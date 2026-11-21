@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notif_channel">جهاز افتراضي</string>
+    <string name="notif_starting">جارٍ التشغيل…</string>
+    <string name="notif_running">%1$s يعمل</string>
+    <string name="notif_stop">إيقاف التشغيل</string>
+</resources>

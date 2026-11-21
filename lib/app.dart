@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'screens/home_screen.dart';
 import 'state.dart';
@@ -69,6 +70,14 @@ class _StrataAppState extends State<StrataApp> {
             'system' => ThemeMode.system,
             _ => ThemeMode.dark,
           },
+          // Dil: ilk açılışta İngilizce; Arapçada arayüz sağdan sola dizilir
+          locale: Locale(app.lang),
+          supportedLocales: [for (final l in languages.keys) Locale(l)],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           home: app.ready ? const HomeScreen() : const SetupScreen(),
         );
       },

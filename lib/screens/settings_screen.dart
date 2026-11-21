@@ -61,9 +61,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
             children: [
               SectionCard(title: t('Görünüm', 'Appearance'), icon: Icons.palette_outlined, children: [
-                _seg<String>(t('Dil', 'Language'), null, s['language'] as String? ?? 'system',
-                    {'system': t('Sistem', 'System'), 'tr': 'Türkçe', 'en': 'English'},
-                    (v) => app.setSetting('language', v)),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: DropdownButtonFormField<String>(
+                    value: app.lang,
+                    isExpanded: true,
+                    decoration: InputDecoration(labelText: t('Dil', 'Language'), prefixIcon: const Icon(Icons.translate_rounded)),
+                    items: [
+                      for (final e in languages.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) app.setSetting('language', v);
+                    },
+                  ),
+                ),
                 _seg<String>(t('Tema', 'Theme'), null, s['theme'] as String? ?? 'dark',
                     {'dark': t('Koyu', 'Dark'), 'light': t('Açık', 'Light'), 'system': t('Sistem', 'System')},
                     (v) => app.setSetting('theme', v)),

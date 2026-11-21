@@ -142,7 +142,7 @@ class _EditorScreenState extends State<EditorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           duration: const Duration(seconds: 8),
           content: Text('${t('Algılandı', 'Detected')}: '
-              '${d.custom ? '${d.source} (${archLabelOf(d.os.arch)}${d.uefi ? ', UEFI' : ''})' : d.os.name}'),
+              '${d.custom ? '${d.source} (${archLabelOf(d.os.arch)}${d.uefi ? ', UEFI' : ''})' : d.os.label}'),
           action: SnackBarAction(
             label: t('Uygula', 'Apply'),
             onPressed: () {
@@ -312,7 +312,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     child: Row(children: [
                       OsBadge(arch: o.arch, label: o.badge, size: 26),
                       const SizedBox(width: 10),
-                      Expanded(child: Text(o.name, overflow: TextOverflow.ellipsis)),
+                      Expanded(child: Text(o.label, overflow: TextOverflow.ellipsis)),
                     ]),
                   ),
               ],
