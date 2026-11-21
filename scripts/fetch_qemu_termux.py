@@ -43,6 +43,15 @@ BINARIES = [
     (["qemu-system-aarch64-headless", "qemu-system-aarch64"], "qemu-system-aarch64", "libqemu-system-aarch64.so"),
     (["qemu-system-ppc64-headless", "qemu-system-ppc64"], "qemu-system-ppc64", "libqemu-system-ppc64.so"),
     (["qemu-system-riscv64-headless", "qemu-system-riscv64"], "qemu-system-riscv64", "libqemu-system-riscv64.so"),
+    # Retro / sunucu mimarileri
+    (["qemu-system-sparc64-headless", "qemu-system-sparc64"], "qemu-system-sparc64", "libqemu-system-sparc64.so"),
+    (["qemu-system-sparc-headless", "qemu-system-sparc"], "qemu-system-sparc", "libqemu-system-sparc.so"),
+    (["qemu-system-mips64el-headless", "qemu-system-mips64el"], "qemu-system-mips64el", "libqemu-system-mips64el.so"),
+    (["qemu-system-m68k-headless", "qemu-system-m68k"], "qemu-system-m68k", "libqemu-system-m68k.so"),
+    (["qemu-system-s390x-headless", "qemu-system-s390x"], "qemu-system-s390x", "libqemu-system-s390x.so"),
+    (["qemu-system-hppa-headless", "qemu-system-hppa"], "qemu-system-hppa", "libqemu-system-hppa.so"),
+    (["qemu-system-alpha-headless", "qemu-system-alpha"], "qemu-system-alpha", "libqemu-system-alpha.so"),
+    (["qemu-system-loongarch64-headless", "qemu-system-loongarch64"], "qemu-system-loongarch64", "libqemu-system-loongarch64.so"),
 ]
 
 # Çalışma zamanında gereksiz olan bağımlılıklar
@@ -277,6 +286,18 @@ def collect(staging, links):
     print("share/qemu:", " ".join(sorted(n[len("share/qemu/"):] for n in names
                                          if n.startswith("share/qemu/") and "/keymaps/" not in n)))
     print("EKSIK:" if missing else "✓ Gerekli tüm firmware ve klavye dosyaları mevcut", " ".join(missing))
+    # Motorlarda derlenmiş özellikler (ses kartları, pano, vvfat, dmg...)
+    probes = ["AC97", "sb16", "intel-hda", "hda-duplex", "hda-output", "virtio-sound", "virtio-snd", "es1370",
+              "adlib", "gus", "cs4231a", "pcspk", "qemu-vdagent", "virtserialport", "vvfat", "dmg", "screamer",
+              "usb-audio", "audiodev", "virtio-gpu", "virtio-keyboard", "ati-vga", "bochs-display", "qxl"]
+    for f in sorted(os.listdir(JNI_DIR)):
+        if not f.startswith("libqemu-system"):
+            continue
+        data = open(os.path.join(JNI_DIR, f), "rb").read()
+        have = [p for p in probes if p.encode() in data]
+        print(f"ÖZELLİK {f}: {' '.join(have)}")
+    print("FIRMWARE:", " ".join(sorted(n[len("share/qemu/"):] for n in names
+                                       if n.startswith("share/qemu/") and "/keymaps/" not in n)))
     with open(ASSET_INFO, "w") as f:
         json.dump({"files": count, "bytes": total}, f)
     print(f"✓ {count} dosya -> assets/qemu-runtime.zip ({os.path.getsize(ASSET_ZIP) // (1 << 20)} MB)")
