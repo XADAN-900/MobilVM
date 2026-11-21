@@ -152,7 +152,7 @@ Future<void> startVm(BuildContext context, VmConfig vm) async {
     await openEditor(context, vm);
     return;
   }
-  if (!app.qemuOk) {
+  if (!app.qemuOk || !app.availableArchs.contains(vm.arch)) {
     toast(context, t('QEMU motoru bu APK\'da yok.', 'The QEMU engine is missing from this APK.'));
     return;
   }

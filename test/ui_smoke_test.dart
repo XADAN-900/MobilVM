@@ -29,6 +29,10 @@ final _vms = [
       sharedFolder: true, createdAt: 2),
   VmConfig(id: 'c', name: 'MS-DOS 6.22', template: 'msdos', arch: 'x86_16', ramMb: 16, cpus: 1,
       floppyPath: '/img/Disk1.img', boot: 'floppy', createdAt: 3),
+  VmConfig(id: 'd', name: 'Debian ARM64 sunucu', template: 'debian_arm64', arch: 'arm64', ramMb: 1024, cpus: 2,
+      isoPath: '/img/debian-arm64.iso', diskPath: '/img/arm.qcow2', createdAt: 4),
+  VmConfig(id: 'e', name: 'Mac OS 9.2', template: 'macos9', arch: 'ppc', ramMb: 512, cpus: 1,
+      isoPath: '/img/MacOS9.toast', diskPath: '/img/mac.qcow2', createdAt: 5),
 ];
 
 final _images = [
@@ -88,6 +92,7 @@ void _seedState() {
     ..device = {
       'totalRamMb': 7270, 'cores': 8, 'freeMb': 32358, 'qemu64': true, 'qemu32': true, 'qemuImg': true,
       'runtime': true, 'model': 'samsung SM-A556E', 'android': '15',
+      'archs': allArchs,
     }
     ..vms = [..._vms]
     ..runningId = 'b';
@@ -166,18 +171,20 @@ void main() {
           await done(tester);
         });
 
-        testWidgets('VM ayarları $tag', (tester) async {
-          await setSize(tester, height: 4200);
-          await tester.pumpWidget(_wrap(EditorScreen(vm: _vms[1]), lang, scale));
-          await tester.pump(const Duration(milliseconds: 500));
-          await tester.tap(find.byType(ExpansionTile));
-          await tester.pump(const Duration(milliseconds: 600));
-          await done(tester);
-        });
+        for (final vmIndex in [1, 3, 4]) {
+          testWidgets('VM ayarları ${_vms[vmIndex].archLabel} $tag', (tester) async {
+            await setSize(tester, height: 4200);
+            await tester.pumpWidget(_wrap(EditorScreen(vm: _vms[vmIndex]), lang, scale));
+            await tester.pump(const Duration(milliseconds: 500));
+            await tester.tap(find.byType(ExpansionTile));
+            await tester.pump(const Duration(milliseconds: 600));
+            await done(tester);
+          });
+        }
 
         testWidgets('ayrıntılar $tag', (tester) async {
           await setSize(tester, height: 4200);
-          await tester.pumpWidget(_wrap(const DetailsScreen(vmId: 'b'), lang, scale));
+          await tester.pumpWidget(_wrap(DetailsScreen(vmId: lang == 'ar' || lang == 'ru' ? 'd' : 'b'), lang, scale));
           await tester.pump(const Duration(milliseconds: 500));
           await done(tester);
         });

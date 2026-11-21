@@ -26,6 +26,34 @@ void main() {
     expect(detectOs('benim isletim sistemim'), isNull);
   });
 
+  test('ada göre mimari algılama (ARM, RISC-V, POWER, Mac)', () {
+    expect(detectOs('debian-12.8.0-arm64-netinst')?.id, 'debian_arm64');
+    expect(detectOs('debian-12.8.0-armhf-netinst')?.id, 'debian_armhf');
+    expect(detectOs('alpine-virt-3.20.3-aarch64')?.id, 'alpine_arm64');
+    expect(detectOs('ubuntu-24.04.1-live-server-riscv64')?.id, 'ubuntu_riscv64');
+    expect(detectOs('debian-12.8.0-ppc64el-netinst')?.id, 'debian_ppc64');
+    expect(detectOs('Mac OS 9.2.2 Install')?.id, 'macos9');
+    expect(detectOs('Mac OS X 10.4 Tiger Install DVD')?.id, 'macosx104');
+    expect(detectOs('Fedora-Server-dvd-aarch64-41')?.id, 'fedora_arm64');
+    expect(detectOs('mystery-os-riscv64')?.id, 'other_riscv64');
+    // x86 adları etkilenmemeli
+    expect(detectOs('archlinux-2024.11.01-x86_64')?.id, 'arch');
+    expect(detectOs('Win10_22H2_English_x64')?.id, 'win10');
+    expect(detectOs('debian-12.7.0-amd64-netinst')?.id, 'debian');
+  });
+
+  test('ARM64 Linux Image + BOOTAA64.EFI (anlamsız ad ve etiket)', () async {
+    final d = await det('mystery-arm.iso');
+    expect(d, isNotNull);
+    expect(d!.os.arch, 'arm64');
+    expect(d.os.family, 'linux');
+  }, skip: !exists('mystery-arm.iso'));
+
+  test('gerçek Alpine ARM64 ISO (anlamsız ad)', () async {
+    final d = await det('mystery-c.iso');
+    expect(d?.os.id, 'alpine_arm64');
+  }, skip: !exists('mystery-c.iso'));
+
   test('kendi OS: GRUB + Multiboot2, 32-bit', () async {
     final d = await det('myos32.iso');
     expect(d, isNotNull);

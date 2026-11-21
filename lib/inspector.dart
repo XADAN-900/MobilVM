@@ -16,6 +16,10 @@ class MediaReport {
   String? windowsHint; // NTFS bölümü vb.
   String? bsdHint;
   bool linuxPartition = false;
+
+  /// Apple Partition Map (PowerPC Mac diski / CD'si); küçükse Mac OS 9, büyükse Mac OS X.
+  bool macHint = false;
+  bool macHint9 = false;
   String boot = 'cd';
   final List<String> findings = [];
 }
@@ -79,8 +83,25 @@ Future<_KernelInfo?> _kernelInfo(_Reader r, int pos, int size) async {
   final k = _KernelInfo();
   if (head[0] == 0x7F && head[1] == 0x45 && head[2] == 0x4C && head[3] == 0x46) {
     final cls = head[4];
-    final machine = _u16(head, 18);
-    if (machine == 62 || cls == 2) {
+    // ELF e_machine: PowerPC ELF'leri büyük-endian olabilir
+    final bigEndian = head[5] == 2;
+    final machine = bigEndian ? (head[18] << 8 | head[19]) : _u16(head, 18);
+    final other = switch (machine) {
+      183 => 'arm64',
+      40 => 'arm32',
+      20 => 'ppc',
+      21 => 'ppc64',
+      243 => cls == 2 ? 'riscv64' : null,
+      _ => null,
+    };
+    if (other != null) {
+      k.arch = other;
+      k.kind = 'ELF ${cls == 2 ? 64 : 32} (${switch (other) { 'arm64' => 'AArch64', 'arm32' => 'ARM', 'ppc' => 'PowerPC', 'ppc64' => 'PowerPC 64', _ => 'RISC-V' }})';
+      // vmlinux ELF'i: Linux çekirdeği mi?
+      k.linux = _has(head, 'Linux version'.codeUnits) || _has(head, const [0x76, 0x6D, 0x6C, 0x69, 0x6E, 0x75, 0x78]);
+      return k;
+    }
+    if (machine == 62) {
       k.arch = 'x86_64';
       k.kind = 'ELF64';
     } else if (machine == 3) {
@@ -95,6 +116,17 @@ Future<_KernelInfo?> _kernelInfo(_Reader r, int pos, int size) async {
     } else {
       return null;
     }
+  } else if (String.fromCharCodes(head.sublist(0x38, 0x3C)) == 'ARM\x64') {
+    // ARM64 Linux "Image" başlığı
+    k.linux = true;
+    k.kind = 'Linux Image (AArch64)';
+    k.arch = 'arm64';
+    return k;
+  } else if (String.fromCharCodes(head.sublist(0x38, 0x3C)) == 'RSC\x05') {
+    k.linux = true;
+    k.kind = 'Linux Image (RISC-V)';
+    k.arch = 'riscv64';
+    return k;
   } else if (head.length > 0x240 && String.fromCharCodes(head.sublist(0x202, 0x206)) == 'HdrS') {
     k.linux = true;
     k.kind = 'Linux bzImage';
@@ -280,7 +312,7 @@ Future<MediaReport> inspectIso(RandomAccessFile f, int length) async {
       !x.dir &&
       x.size > 1024 &&
       x.size < 128 * 1024 * 1024 &&
-      RegExp(r'(vmlinuz|bzimage|kernel|\.elf$|\.krn$|\.kern$|\.bin$|\.sys$|\.exe$|^[^/]*os[^/]*$)')
+      RegExp(r'(vmlinuz|vmlinux|bzimage|^image$|kernel|\.elf$|\.krn$|\.kern$|\.bin$|\.sys$|\.exe$|^[^/]*os[^/]*$)')
           .hasMatch(x.path.split('/').last) &&
       !RegExp(r'(isolinux\.bin|eltorito|boot\.cat|ldlinux|\.efi$|grub|limine-bios|memtest)').hasMatch(x.path)));
   final checked = <String>{};
@@ -291,8 +323,10 @@ Future<MediaReport> inspectIso(RandomAccessFile f, int length) async {
     rep.findings.add('${c.path}: ${k.kind} (${_archText(k.arch)})');
     if (k.linux && multiboot.isEmpty) rep.linuxKernel = true;
     if (!k.linux) rep.customOs = true;
-    if (k.arch != null && (rep.arch.isEmpty || _rank(k.arch!) > _rank(rep.arch))) rep.arch = k.arch!;
-    if (k.linux || rep.arch == 'x86_64') break;
+    if (k.arch != null && (rep.arch.isEmpty || !isX86Like(k.arch!) || _rank(k.arch!) > _rank(rep.arch))) {
+      rep.arch = k.arch!;
+    }
+    if (k.linux || rep.arch == 'x86_64' || !isX86Like(rep.arch)) break;
   }
 
   // ---------------------------------------------- UEFI uygulamaları
@@ -301,6 +335,19 @@ Future<MediaReport> inspectIso(RandomAccessFile f, int length) async {
     if (rep.uefiOnly && rep.arch.isEmpty) rep.arch = 'x86_64';
   } else if (names.contains('bootia32.efi') && rep.uefiOnly && rep.arch.isEmpty) {
     rep.arch = 'x86_32';
+  } else if (names.contains('bootaa64.efi')) {
+    rep.findings.add('BOOTAA64.EFI (ARM 64)');
+    if (rep.arch.isEmpty || isX86Like(rep.arch)) rep.arch = 'arm64';
+  } else if (names.contains('bootriscv64.efi')) {
+    rep.findings.add('BOOTRISCV64.EFI');
+    if (rep.arch.isEmpty || isX86Like(rep.arch)) rep.arch = 'riscv64';
+  } else if (names.contains('bootarm.efi')) {
+    rep.findings.add('BOOTARM.EFI (ARM 32)');
+    if (rep.arch.isEmpty || isX86Like(rep.arch)) rep.arch = 'arm32';
+  }
+  if (rep.arch.isEmpty && boots.any((b) => b.platform == 1 || b.platform == 2)) {
+    rep.arch = 'ppc';
+    rep.findings.add('El Torito: PowerPC / Mac');
   }
 
   // ---------------------------------------------- önyükleme kodunun kendisi
@@ -331,6 +378,17 @@ Future<MediaReport> inspectRaw(RandomAccessFile f, int length) async {
   final r = _Reader(f, length);
   final rep = MediaReport()..boot = length <= 2949120 ? 'floppy' : 'disk';
   final s0 = await r.read(0, 512);
+  // Apple Partition Map: "ER" sürücü kaydı + 512. baytta "PM"
+  final s1 = await r.read(512, 4);
+  if (s0.length >= 2 && s0[0] == 0x45 && s0[1] == 0x52 && s1.length >= 2 && s1[0] == 0x50 && s1[1] == 0x4D) {
+    rep
+      ..macHint = true
+      ..macHint9 = length < (1200 << 20)
+      ..arch = 'ppc'
+      ..boot = 'disk';
+    rep.findings.add('Apple Partition Map (PowerPC Mac)');
+    return rep;
+  }
   if (s0.length < 512 || s0[510] != 0x55 || s0[511] != 0xAA) {
     rep.findings.add(t('Önyükleme imzası yok (0x55AA)', 'No boot signature (0x55AA)'));
     return rep;
@@ -388,11 +446,18 @@ Future<MediaReport> inspectRaw(RandomAccessFile f, int length) async {
   return rep;
 }
 
+bool isX86Like(String arch) => arch.startsWith('x86');
+
 int _rank(String arch) => switch (arch) { 'x86_64' => 3, 'x86_32' => 2, 'x86_16' => 1, _ => 0 };
 
 String _archText(String? arch) => switch (arch) {
       'x86_64' => '64-bit',
       'x86_32' => '32-bit',
       'x86_16' => '16-bit',
+      'arm64' => 'ARM 64',
+      'arm32' => 'ARM 32',
+      'ppc' => 'PowerPC',
+      'ppc64' => 'PowerPC 64',
+      'riscv64' => 'RISC-V 64',
       _ => '?',
     };

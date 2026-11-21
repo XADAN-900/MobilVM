@@ -48,6 +48,13 @@ class AppState extends ChangeNotifier {
 
   bool get qemuOk => device['qemu64'] == true || device['qemu32'] == true;
 
+  /// APK'da motoru bulunan mimariler (eski sürümlerde liste yoksa x86 varsayılır).
+  List<String> get availableArchs {
+    final l = device['archs'];
+    if (l is List) return l.cast<String>();
+    return qemuOk ? const ['x86_16', 'x86_32', 'x86_64'] : const [];
+  }
+
   int get totalRamMb => (device['totalRamMb'] as num?)?.toInt() ?? 4096;
   int get cores => (device['cores'] as num?)?.toInt() ?? 4;
 

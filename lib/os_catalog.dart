@@ -22,6 +22,7 @@ const osFamilies = <OsFamily>[
   OsFamily('windows', 'Microsoft Windows', 'Microsoft Windows', Icons.desktop_windows_rounded),
   OsFamily('linux', 'Linux', 'Linux', Icons.terminal_rounded),
   OsFamily('dos', 'DOS', 'DOS', Icons.keyboard_rounded),
+  OsFamily('macos', 'Mac OS (PowerPC)', 'Mac OS (PowerPC)', Icons.laptop_mac_rounded),
   OsFamily('bsd', 'BSD', 'BSD', Icons.dns_rounded),
   OsFamily('other', 'Diğer', 'Other', Icons.category_rounded),
 ];
@@ -179,6 +180,52 @@ const osCatalog = <OsType>[
   OsType(id: 'netbsd', family: 'bsd', name: 'NetBSD (64-bit)', badge: 'NBS', arch: 'x86_64', ram: 512, cpus: 1,
       diskMb: 8192),
 
+  // ------------------------------------------------------------ ARM / RISC-V / POWER Linux
+  OsType(id: 'debian_arm64', family: 'linux', name: 'Debian (ARM 64)', badge: 'DEB', arch: 'arm64', ram: 1024,
+      cpus: 2, diskMb: 16384, tipTr: 'arm64 netinst ISO\'su ile kur', tipEn: 'Install with the arm64 netinst ISO'),
+  OsType(id: 'ubuntu_arm64', family: 'linux', name: 'Ubuntu Server (ARM 64)', badge: 'UB', arch: 'arm64',
+      ram: 2048, cpus: 2, diskMb: 20480),
+  OsType(id: 'alpine_arm64', family: 'linux', name: 'Alpine Linux (ARM 64)', badge: 'AL', arch: 'arm64',
+      ram: 512, cpus: 2, diskMb: 4096),
+  OsType(id: 'fedora_arm64', family: 'linux', name: 'Fedora (ARM 64)', badge: 'FED', arch: 'arm64', ram: 2048,
+      cpus: 2, diskMb: 20480, heavy: true),
+  OsType(id: 'linux_arm64', family: 'linux', name: 'Linux (ARM 64, other)', badge: 'A64', arch: 'arm64',
+      ram: 1024, cpus: 2, diskMb: 16384),
+  OsType(id: 'debian_armhf', family: 'linux', name: 'Debian (ARM 32)', badge: 'DEB', arch: 'arm32', ram: 512,
+      cpus: 2, diskMb: 8192),
+  OsType(id: 'linux_arm32', family: 'linux', name: 'Linux (ARM 32, other)', badge: 'A32', arch: 'arm32',
+      ram: 512, cpus: 2, diskMb: 8192),
+  OsType(id: 'debian_riscv64', family: 'linux', name: 'Debian (RISC-V 64)', badge: 'DEB', arch: 'riscv64',
+      ram: 1024, cpus: 2, diskMb: 16384),
+  OsType(id: 'ubuntu_riscv64', family: 'linux', name: 'Ubuntu Server (RISC-V 64)', badge: 'UB', arch: 'riscv64',
+      ram: 2048, cpus: 2, diskMb: 20480),
+  OsType(id: 'linux_riscv64', family: 'linux', name: 'Linux (RISC-V 64, other)', badge: 'RV', arch: 'riscv64',
+      ram: 1024, cpus: 2, diskMb: 16384),
+  OsType(id: 'debian_ppc64', family: 'linux', name: 'Debian (ppc64el)', badge: 'DEB', arch: 'ppc64', ram: 1024,
+      cpus: 2, diskMb: 16384),
+  OsType(id: 'ubuntu_ppc64', family: 'linux', name: 'Ubuntu Server (ppc64el)', badge: 'UB', arch: 'ppc64',
+      ram: 2048, cpus: 2, diskMb: 20480),
+  OsType(id: 'debian_ppc', family: 'linux', name: 'Debian (PowerPC 32)', badge: 'DEB', arch: 'ppc', ram: 512,
+      diskMb: 8192),
+  OsType(id: 'linux_ppc', family: 'linux', name: 'Linux (PowerPC, other)', badge: 'PPC', arch: 'ppc', ram: 512,
+      diskMb: 8192),
+
+  // ------------------------------------------------------------ Mac OS (PowerPC)
+  OsType(id: 'macos9', family: 'macos', name: 'Mac OS 9.2', badge: 'OS9', arch: 'ppc', ram: 512, diskMb: 4096,
+      tipTr: 'Kurulum CD\'sinden açılır; diski önce Drive Setup ile biçimlendir',
+      tipEn: 'Boots from the install CD; format the disk with Drive Setup first'),
+  OsType(id: 'macosx103', family: 'macos', name: 'Mac OS X 10.3 Panther', badge: '10.3', arch: 'ppc', ram: 768,
+      diskMb: 12288, heavy: true),
+  OsType(id: 'macosx104', family: 'macos', name: 'Mac OS X 10.4 Tiger', badge: '10.4', arch: 'ppc', ram: 1024,
+      diskMb: 20480, heavy: true, tipTr: 'Diski önce Disk İzlencesi ile Mac OS Genişletilmiş olarak biçimlendir',
+      tipEn: 'Format the disk as Mac OS Extended with Disk Utility first'),
+  OsType(id: 'macosx105', family: 'macos', name: 'Mac OS X 10.5 Leopard', badge: '10.5', arch: 'ppc', ram: 1536,
+      diskMb: 20480, heavy: true),
+
+  // ------------------------------------------------------------ BSD (diğer mimariler)
+  OsType(id: 'freebsd_arm64', family: 'bsd', name: 'FreeBSD (ARM 64)', badge: 'FBS', arch: 'arm64', ram: 1024,
+      cpus: 2, diskMb: 16384),
+
   // ------------------------------------------------------------ Diğer
   OsType(id: 'reactos', family: 'other', name: 'ReactOS', badge: 'RE', arch: 'x86_32', cpu: 'pentium3',
       vga: 'std', nic: 'ne2k_pci', ram: 512, diskMb: 8192,
@@ -192,6 +239,16 @@ const osCatalog = <OsType>[
       cpu: '486', vga: 'cirrus', ram: 16, diskMb: 256, net: false, tablet: false),
   OsType(id: 'other32', family: 'other', name: 'Other / Unknown (32-bit)', badge: '32', arch: 'x86_32',
       cpu: 'pentium3', ram: 512, diskMb: 8192),
+  OsType(id: 'other_arm64', family: 'other', name: 'Other / Unknown (ARM 64)', badge: 'A64', arch: 'arm64',
+      ram: 256, cpus: 1, diskMb: 0, net: false),
+  OsType(id: 'other_arm32', family: 'other', name: 'Other / Unknown (ARM 32)', badge: 'A32', arch: 'arm32',
+      ram: 256, cpus: 1, diskMb: 0, net: false),
+  OsType(id: 'other_ppc', family: 'other', name: 'Other / Unknown (PowerPC 32)', badge: 'PPC', arch: 'ppc',
+      ram: 256, diskMb: 0, net: false),
+  OsType(id: 'other_ppc64', family: 'other', name: 'Other / Unknown (PowerPC 64)', badge: 'P64', arch: 'ppc64',
+      ram: 512, diskMb: 0, net: false),
+  OsType(id: 'other_riscv64', family: 'other', name: 'Other / Unknown (RISC-V 64)', badge: 'RV', arch: 'riscv64',
+      ram: 256, cpus: 1, diskMb: 0, net: false),
   OsType(id: 'custom', family: 'other', name: 'Other / Unknown (64-bit)', badge: '64', arch: 'x86_64',
       ram: 1024, cpus: 2, diskMb: 16384),
 ];
@@ -206,8 +263,57 @@ OsType osById(String id) {
 
 List<OsType> osOfFamily(String family) => osCatalog.where((o) => o.family == family).toList();
 
-/// VirtualBox gibi: VM adından veya ISO dosya adından sistemi tahmin eder.
+/// Metindeki mimari ipucu: arm64, arm32, ppc64, ppc, riscv64 ya da null (x86 / bilinmiyor).
+String? archHintOf(String text) {
+  final s = text.toLowerCase();
+  if (RegExp(r'(aarch64|arm64|armv8)').hasMatch(s)) return 'arm64';
+  if (RegExp(r'(armhf|armel|armv7|arm32|\barm\b)').hasMatch(s)) return 'arm32';
+  if (RegExp(r'(ppc64el|ppc64le|ppc64|power9|power8|pseries)').hasMatch(s)) return 'ppc64';
+  if (RegExp(r'(powerpc|\bppc\b|_ppc|-ppc|macppc|powermac)').hasMatch(s)) return 'ppc';
+  if (RegExp(r'(riscv64|risc-v|riscv)').hasMatch(s)) return 'riscv64';
+  return null;
+}
+
+/// Bir dağıtımın başka mimarideki karşılığı (ör. debian + arm64 -> Debian (ARM 64)).
+OsType withArch(OsType os, String? arch) {
+  if (arch == null || os.arch == arch || os.family == 'windows' || os.family == 'dos') return os;
+  final base = os.id.replaceAll(RegExp(r'(32|_armhf|_arm64|_riscv64|_ppc64|_ppc)$'), '');
+  const table = {
+    'debian:arm64': 'debian_arm64', 'debian:arm32': 'debian_armhf', 'debian:riscv64': 'debian_riscv64',
+    'debian:ppc64': 'debian_ppc64', 'debian:ppc': 'debian_ppc',
+    'ubuntu:arm64': 'ubuntu_arm64', 'ubuntu:riscv64': 'ubuntu_riscv64', 'ubuntu:ppc64': 'ubuntu_ppc64',
+    'alpine:arm64': 'alpine_arm64', 'fedora:arm64': 'fedora_arm64', 'freebsd:arm64': 'freebsd_arm64',
+  };
+  final hit = table['$base:$arch'];
+  if (hit != null) return osById(hit);
+  if (os.family == 'linux' || os.family == 'bsd') {
+    return osById(switch (arch) {
+      'arm64' => 'linux_arm64',
+      'arm32' => 'linux_arm32',
+      'riscv64' => 'linux_riscv64',
+      'ppc' => 'linux_ppc',
+      _ => 'debian_ppc64',
+    });
+  }
+  return osById('other_$arch');
+}
+
+/// VirtualBox gibi: VM adından veya ISO dosya adından sistemi (ve mimarisini) tahmin eder.
 OsType? detectOs(String text) {
+  final s = text.toLowerCase();
+  if (s.trim().isEmpty) return null;
+  // Mac OS (PowerPC)
+  if (RegExp(r'(mac ?os ?9|macos9|os ?9\.\d)').hasMatch(s)) return osById('macos9');
+  if (RegExp(r'(panther|mac ?os ?x? ?10\.3)').hasMatch(s)) return osById('macosx103');
+  if (RegExp(r'(tiger|mac ?os ?x? ?10\.4)').hasMatch(s)) return osById('macosx104');
+  if (RegExp(r'(leopard|mac ?os ?x? ?10\.5)').hasMatch(s)) return osById('macosx105');
+  final base = _detectBase(s);
+  final hint = archHintOf(s);
+  if (base == null) return hint == null ? null : osById('other_$hint');
+  return withArch(base, hint);
+}
+
+OsType? _detectBase(String text) {
   final s = text.toLowerCase();
   if (s.trim().isEmpty) return null;
   final is32 = RegExp(r'(i[3-6]86|x86(?![_-]?64)|x32|32[ -]?bit|\b32\b)').hasMatch(s);
@@ -289,7 +395,8 @@ class OsDetection {
     return p.length > 40 ? p.substring(0, 40) : p;
   }
 
-  OsDetection copyWith({String? productName, int? ramHint, List<String>? findings}) => OsDetection(os, source,
+  OsDetection copyWith({OsType? os, String? productName, int? ramHint, List<String>? findings}) =>
+      OsDetection(os ?? this.os, source,
       custom: custom,
       uefi: uefi,
       boot: boot,
@@ -353,7 +460,13 @@ Future<OsDetection?> detectOsFromFile(String path) async {
             if (sq > 0) '${t('Canlı sistem dosyası', 'Live filesystem')}: ${(sq / (1 << 20)).round()} MB',
             if (hint != null) '${t('Önerilen RAM', 'Recommended RAM')}: ${hint ~/ 1024} GB',
           ];
+          // Mimari: etiket ("arm64", "ppc64el"...) veya içerik (EFI önyükleyicisi) x86 dışı diyorsa düzelt
+          final archHint = archHintOf(label) ?? scanner.archHint;
+          final archOs = archHint != null && isX86Arch(result.os.arch) && result.os.family != 'windows'
+              ? withArch(result.os, archHint)
+              : null;
           return result.copyWith(
+            os: archOs,
             productName: human ? label : (scanner.productName ?? result.productName),
             ramHint: hint,
             findings: [...result.findings, ...extra],
@@ -389,8 +502,14 @@ Future<OsDetection?> detectOsFromFile(String path) async {
 OsDetection? _fromReport(MediaReport rep) {
   final findings = rep.findings;
   if (rep.linuxKernel) {
-    return OsDetection(osById(rep.arch == 'x86_32' ? 'linux32' : 'linux64'), t('Linux çekirdeği', 'Linux kernel'),
-        uefi: rep.uefiOnly, findings: findings);
+    final os = isX86Arch(rep.arch) || rep.arch.isEmpty
+        ? osById(rep.arch == 'x86_32' ? 'linux32' : 'linux64')
+        : withArch(osById('linux64'), rep.arch);
+    return OsDetection(os, t('Linux çekirdeği', 'Linux kernel'),
+        uefi: rep.uefiOnly && isX86Arch(os.arch), findings: findings);
+  }
+  if (rep.macHint) {
+    return OsDetection(osById(rep.macHint9 ? 'macos9' : 'macosx104'), 'Apple Partition Map', findings: findings);
   }
   if (rep.windowsHint != null) {
     return OsDetection(osById('winxp'), t('NTFS bölümü', 'NTFS partition'), boot: 'disk', findings: findings);
@@ -400,9 +519,17 @@ OsDetection? _fromReport(MediaReport rep) {
     return OsDetection(osById('linux64'), t('Linux bölümü', 'Linux partition'), boot: 'disk', findings: findings);
   }
   if (rep.arch.isEmpty) return null;
-  final os = osById(switch (rep.arch) { 'x86_16' => 'other16', 'x86_32' => 'other32', _ => 'custom' });
+  final os = osById(switch (rep.arch) {
+    'x86_16' => 'other16',
+    'x86_32' => 'other32',
+    'x86_64' => 'custom',
+    _ => 'other_${rep.arch}',
+  });
   return OsDetection(os, t('Özel işletim sistemi', 'Custom operating system'),
-      custom: true, uefi: rep.uefiOnly && rep.arch != 'x86_16', boot: rep.boot, findings: findings);
+      custom: true,
+      uefi: rep.uefiOnly && isX86Arch(rep.arch) && rep.arch != 'x86_16',
+      boot: isX86Arch(rep.arch) ? rep.boot : 'cd',
+      findings: findings);
 }
 
 OsType? _detectFromIsoLabel(String label) {
@@ -441,6 +568,9 @@ class _IsoScanner {
 
   /// .disk/info'dan okunan ürün adı.
   String? productName;
+
+  /// İçerikteki dosya/klasör adlarından mimari ipucu (EFI önyükleyicileri, ppc klasörü vb.).
+  String? archHint;
 
   Future<Uint8List> _read(int pos, int len) async {
     await f.setPosition(pos);
@@ -481,6 +611,19 @@ class _IsoScanner {
       // canlı sistem dosyalarının boyutu için olası klasörler
       for (final dn in ['live', 'casper', 'liveos', 'arch', 'boot']) {
         await sub(dn);
+      }
+      // Mimari: EFI önyükleyicisinin adı en güvenilir ipucudur
+      final efiDir = await sub('efi');
+      final efiBoot = efiDir['boot'];
+      final efiNames = efiBoot != null && efiBoot.$3 ? (await _dir(efiBoot.$1, efiBoot.$2)).keys.toSet() : <String>{};
+      if (efiNames.contains('bootaa64.efi') && !efiNames.contains('bootx64.efi')) {
+        archHint = 'arm64';
+      } else if (efiNames.contains('bootriscv64.efi') && !efiNames.contains('bootx64.efi')) {
+        archHint = 'riscv64';
+      } else if (efiNames.contains('bootarm.efi') && !efiNames.contains('bootx64.efi')) {
+        archHint = 'arm32';
+      } else if ((root.containsKey('ppc') || root.containsKey('ppc64')) && !root.containsKey('isolinux')) {
+        archHint = 'ppc64';
       }
 
       // 1) Debian/Ubuntu tabanlılar: .disk/info dosyasında tam ad yazar ("Pardus 23.1 ...", "Linux Mint 21 ...")

@@ -104,7 +104,21 @@ xorriso -as mkisofs -quiet -R -J -V "TyrOS 1.0" -o "$OUT/TyrOS_v1_0 (3).iso" "$L
 rm -rf "$LB/.disk"
 xorriso -as mkisofs -quiet -R -J -V "MYDISTRO" -o "$OUT/livebuild-nodisk.iso" "$LB"
 
-# --- 4) Gerçek Linux ISO'ları (adı anlamsız yapılarak: içerikten tanınmalı)
+# --- 4) ARM64 Linux "Image" çekirdekli, EFI ile açılan genel bir ISO (adı ve etiketi bir şey söylemiyor)
+ARMD="$WORK/armiso"
+mkdir -p "$ARMD/boot/grub" "$ARMD/EFI/BOOT"
+python3 - "$ARMD/boot/Image" <<'PY'
+import sys
+b = bytearray(65536)
+b[0x38:0x3C] = b'ARM\x64'   # ARM64 Linux Image sihirli sayısı
+open(sys.argv[1], 'wb').write(b)
+PY
+head -c 2048 /dev/urandom > "$ARMD/EFI/BOOT/BOOTAA64.EFI"
+printf 'menuentry "x" {\n  linux /boot/Image\n}\n' > "$ARMD/boot/grub/grub.cfg"
+xorriso -as mkisofs -quiet -R -J -V "MYDISK" -o "$OUT/mystery-arm.iso" "$ARMD"
+
+# --- 5) Gerçek Linux ISO'ları (adı anlamsız yapılarak: içerikten tanınmalı)
 curl -fsSL -o "$OUT/mystery-a.iso" https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-virt-3.20.3-x86_64.iso || true
 curl -fsSL -o "$OUT/mystery-b.iso" http://tinycorelinux.net/15.x/x86/release/Core-current.iso || true
+curl -fsSL -o "$OUT/mystery-c.iso" https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-virt-3.20.3-aarch64.iso || true
 ls -la "$OUT"

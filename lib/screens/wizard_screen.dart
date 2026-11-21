@@ -12,7 +12,7 @@ const ramSteps = [8, 16, 32, 64, 128, 256, 384, 512, 768, 1024, 1536, 2048, 3072
 const diskSteps = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 12288, 16384, 20480, 32768, 40960, 65536, 131072, 262144];
 
 int maxRamFor(String arch) {
-  final cap = arch == 'x86_16' ? 256 : 16384;
+  final cap = math.min(archMaxRam(arch), 16384);
   return math.min(cap, math.max(64, (app.totalRamMb * 0.6).floor()));
 }
 
@@ -350,8 +350,9 @@ class _WizardScreenState extends State<WizardScreen> {
       ]),
       const SizedBox(height: 12),
       SectionCard(title: t('Kurulum ortamı', 'Installation media'), icon: Icons.album_rounded, children: [
-        _mediaRow('cd', Icons.album_rounded, t('CD / DVD imajı', 'CD / DVD image'), 'ISO, BIN, IMG', _vm.isoPath),
-        _mediaRow('floppy', Icons.sd_card_rounded, t('Disket imajı', 'Floppy image'), 'IMG, IMA, FLP, VFD', _vm.floppyPath),
+        _mediaRow('cd', Icons.album_rounded, t('CD / DVD imajı', 'CD / DVD image'), 'ISO, BIN, IMG, DMG', _vm.isoPath),
+        if (isX86Arch(_os.arch) || _vm.floppyPath.isNotEmpty)
+          _mediaRow('floppy', Icons.sd_card_rounded, t('Disket imajı', 'Floppy image'), 'IMG, IMA, FLP, VFD', _vm.floppyPath),
         _mediaRow('disk', Icons.save_rounded, t('Hazır sabit disk imajı', 'Ready-made hard disk image'),
             'IMG, QCOW2, VDI, VMDK, VHD', _existingDisk),
         const SizedBox(height: 6),
@@ -487,7 +488,7 @@ class _WizardScreenState extends State<WizardScreen> {
   List<Widget> _stepHardware() {
     final cs = Theme.of(context).colorScheme;
     final opts = ramOptionsFor(_vm.arch, _vm.ramMb);
-    final maxCpu = math.max(1, math.min(app.cores, 8));
+    final maxCpu = math.max(1, math.min(math.min(app.cores, 8), archMaxCpus(_vm.arch)));
     final tooMuch = _vm.ramMb > app.totalRamMb * 0.5;
     return [
       SectionCard(title: t('Bellek (RAM)', 'Memory (RAM)'), icon: Icons.memory_rounded, children: [
@@ -534,8 +535,10 @@ class _WizardScreenState extends State<WizardScreen> {
           divisions: math.max(1, maxCpu - 1),
           onChanged: maxCpu == 1 ? null : (x) => setState(() => _vm.cpus = x.round()),
         ),
-        if (_vm.arch == 'x86_16')
-          Text(t('16-bit sistemler tek çekirdek kullanır.', '16-bit systems use a single core.'),
+        if (archMaxCpus(_vm.arch) == 1)
+          Text(_vm.arch == 'ppc'
+                  ? t('PowerMac G4 tek işlemcilidir.', 'The PowerMac G4 has a single processor.')
+                  : t('16-bit sistemler tek çekirdek kullanır.', '16-bit systems use a single core.'),
               style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
       ]),
       if (_os.heavy) ...[
@@ -647,9 +650,12 @@ class _WizardScreenState extends State<WizardScreen> {
             const Divider(height: 28),
             row('RAM', fmtMb(_vm.ramMb)),
             row(t('İşlemci', 'CPU'), '${_vm.cpus} ${t('çekirdek', 'cores')}'),
-            row(t('Ekran kartı', 'Graphics'), _vm.vga),
-            row('Firmware', _vm.firmware == 'uefi' ? 'UEFI' : 'BIOS'),
-            row(t('Fare', 'Mouse'), _vm.tablet ? 'USB tablet' : 'PS/2'),
+            if (isX86Arch(_vm.arch)) ...[
+              row(t('Ekran kartı', 'Graphics'), _vm.vga),
+              row('Firmware', _vm.firmware == 'uefi' ? 'UEFI' : 'BIOS'),
+              row(t('Fare', 'Mouse'), _vm.tablet ? 'USB tablet' : 'PS/2'),
+            ] else
+              row(t('Anakart', 'Machine'), archMachineLabel(_vm.arch)),
             row(t('Ağ', 'Network'), _vm.net ? 'NAT · ${_vm.nic}' : t('Kapalı', 'Off')),
             row('CD / DVD', _vm.isoPath.isEmpty ? '—' : baseName(_vm.isoPath)),
             row(t('Disket', 'Floppy'), _vm.floppyPath.isEmpty ? '—' : baseName(_vm.floppyPath)),

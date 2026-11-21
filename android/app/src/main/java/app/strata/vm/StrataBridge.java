@@ -128,7 +128,10 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
                     if (id != null) {
                         QemuEnv.deleteRecursive(QemuEnv.sharedDir(ctx, id));
                         //noinspection ResultOfMethodCallIgnored
-                        new File(new File(ctx.getFilesDir(), "nvram"), id.replaceAll("[^A-Za-z0-9-]", "_") + ".fd").delete();
+                        File[] nv = new File(ctx.getFilesDir(), "nvram").listFiles();
+                        String prefix = id.replaceAll("[^A-Za-z0-9-]", "_");
+                        if (nv != null) for (File f : nv) if (f.getName().startsWith(prefix)) //noinspection ResultOfMethodCallIgnored
+                            f.delete();
                     }
                     Store.deleteVm(ctx, id);
                     r.success(null);
@@ -287,6 +290,7 @@ final class StrataBridge implements MethodChannel.MethodCallHandler, EventChanne
         m.put("qemu64", QemuEnv.bin(ctx, QemuEnv.BIN_X86_64) != null);
         m.put("qemu32", QemuEnv.bin(ctx, QemuEnv.BIN_I386) != null);
         m.put("qemuImg", QemuEnv.bin(ctx, QemuEnv.BIN_IMG) != null);
+        m.put("archs", QemuEnv.availableArchs(ctx));
         m.put("runtime", QemuEnv.hasRuntimeAsset(ctx));
         m.put("imagesDir", QemuEnv.imagesDir(ctx).getPath());
         File imgs = QemuEnv.imagesDir(ctx);

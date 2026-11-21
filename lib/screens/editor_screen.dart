@@ -63,7 +63,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   int get _maxRam {
-    final cap = v.arch == 'x86_16' ? 256 : 16384;
+    final cap = math.min(archMaxRam(v.arch), 16384);
     return math.min(cap, math.max(64, (app.totalRamMb * 0.6).floor()));
   }
 
@@ -102,14 +102,25 @@ class _EditorScreenState extends State<EditorScreen> {
     v.arch = arch;
     v.cpuModel = '';
     _cpu.text = '';
-    if (arch == 'x86_16') {
+    if (!isX86Arch(arch)) {
+      // Donanım QEMU tarafında mimariye göre sabit: USB giriş, virtio disk/ağ
+      v.tablet = true;
+      if (v.boot == 'floppy') v.boot = 'cd';
+      v.cpus = math.min(v.cpus, archMaxCpus(arch));
+      if (!isX86Arch(v.os.arch) || v.os.arch != arch) v.template = osById('other_$arch').id;
+    } else if (arch == 'x86_16') {
+      if (v.os.arch != arch) v.template = 'other16';
       v.vga = 'cirrus';
       v.tablet = false;
       if (v.ramMb > 256) v.ramMb = 32;
       v.cpus = 1;
     } else if (arch == 'x86_32') {
+      if (v.os.arch != arch) v.template = 'other32';
+      if (v.vga.isEmpty) v.vga = 'std';
       if (v.vga == 'std' && isNew) v.vga = 'cirrus';
     } else {
+      if (v.os.arch != arch) v.template = 'custom';
+      if (v.vga.isEmpty) v.vga = 'std';
       if (v.vga == 'cirrus' && isNew) v.vga = 'std';
     }
     if (v.ramMb > _maxRam) v.ramMb = _ramSteps.lastWhere((s) => s <= _maxRam);
@@ -235,7 +246,8 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final maxCpu = math.max(1, math.min(app.cores, 8));
+    final maxCpu = math.max(1, math.min(math.min(app.cores, 8), archMaxCpus(v.arch)));
+    final x86 = isX86Arch(v.arch);
     final ramOpts = _ramOptions;
     final ramIdx = ramOpts.indexOf(v.ramMb);
 
@@ -339,21 +351,34 @@ class _EditorScreenState extends State<EditorScreen> {
           SectionCard(title: t('Genel', 'General'), icon: Icons.badge_outlined, children: [
             TextField(controller: _name, decoration: InputDecoration(labelText: t('Ad', 'Name'))),
             const SizedBox(height: 14),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'x86_16', label: Text('16-bit')),
-                ButtonSegment(value: 'x86_32', label: Text('32-bit')),
-                ButtonSegment(value: 'x86_64', label: Text('64-bit')),
+            DropdownButtonFormField<String>(
+              key: ValueKey('arch-${v.arch}'),
+              value: v.arch,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: t('Mimari', 'Architecture')),
+              items: [
+                for (final a in allArchs)
+                  DropdownMenuItem(
+                    value: a,
+                    enabled: app.availableArchs.contains(a),
+                    child: Row(children: [
+                      OsBadge(arch: a, label: archLabelOf(a).split(' ').last, size: 24),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(archLongLabelOf(a), overflow: TextOverflow.ellipsis)),
+                    ]),
+                  ),
               ],
-              selected: {v.arch},
-              onSelectionChanged: (s) => _setArch(s.first),
+              onChanged: (a) {
+                if (a != null && a != v.arch) _setArch(a);
+              },
             ),
             const SizedBox(height: 8),
             Text(
               switch (v.arch) {
                 'x86_16' => t('DOS, Windows 3.x · 486 işlemci', 'DOS, Windows 3.x · 486 CPU'),
                 'x86_32' => t('Windows 95/98/XP, 32-bit Linux', 'Windows 95/98/XP, 32-bit Linux'),
-                _ => t('Modern Linux, Windows 7+', 'Modern Linux, Windows 7+'),
+                'x86_64' => t('Modern Linux, Windows 7+', 'Modern Linux, Windows 7+'),
+                _ => '${archMachineLabel(v.arch)}\n${t('Bu mimaride donanım otomatik seçilir (makine, ekran, disk, ağ).', 'Hardware is chosen automatically for this architecture (machine, display, disk, network).')}',
               },
               style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
             ),
@@ -386,6 +411,7 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
               null,
             ),
+            if (x86) ...[
             const SizedBox(height: 6),
             Row(children: [
               Expanded(
@@ -422,6 +448,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ),
+            ],
           ]),
           const SizedBox(height: 12),
 
@@ -446,13 +473,14 @@ class _EditorScreenState extends State<EditorScreen> {
               ],
               () => setState(() => v.diskPath = ''),
             ),
-            _mediaTile(
-              Icons.sd_card_rounded,
-              t('Disket (IMG, IMA, FLP, VFD)', 'Floppy (IMG, IMA, FLP, VFD)'),
-              v.floppyPath,
-              [_act(t('Seç', 'Choose'), () => _pickInto('floppy'))],
-              () => setState(() => v.floppyPath = ''),
-            ),
+            if (x86)
+              _mediaTile(
+                Icons.sd_card_rounded,
+                t('Disket (IMG, IMA, FLP, VFD)', 'Floppy (IMG, IMA, FLP, VFD)'),
+                v.floppyPath,
+                [_act(t('Seç', 'Choose'), () => _pickInto('floppy'))],
+                () => setState(() => v.floppyPath = ''),
+              ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: v.sharedFolder,
@@ -468,9 +496,10 @@ class _EditorScreenState extends State<EditorScreen> {
               segments: [
                 ButtonSegment(value: 'cd', icon: const Icon(Icons.album_rounded), label: const Text('CD')),
                 ButtonSegment(value: 'disk', icon: const Icon(Icons.save_rounded), label: Text(t('Disk', 'Disk'))),
-                ButtonSegment(value: 'floppy', icon: const Icon(Icons.sd_card_rounded), label: Text(t('Disket', 'Floppy'))),
+                if (x86)
+                  ButtonSegment(value: 'floppy', icon: const Icon(Icons.sd_card_rounded), label: Text(t('Disket', 'Floppy'))),
               ],
-              selected: {v.boot},
+              selected: {x86 || v.boot != 'floppy' ? v.boot : 'cd'},
               onSelectionChanged: (s) => setState(() => v.boot = s.first),
             ),
           ]),
@@ -486,6 +515,7 @@ class _EditorScreenState extends State<EditorScreen> {
               subtitle: Text(t('Telefonun bağlantısını paylaşır', 'Shares the phone\'s connection')),
             ),
             if (v.net) ...[
+              if (x86 && v.machine != 'isapc')
               _dropdown<String>(
                 t('Ağ kartı', 'Network card'),
                 v.nic,
@@ -519,6 +549,7 @@ class _EditorScreenState extends State<EditorScreen> {
               keyboardLayouts,
               (x) => setState(() => v.keyboard = x),
             ),
+            if (x86)
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: v.tablet && v.machine != 'isapc',

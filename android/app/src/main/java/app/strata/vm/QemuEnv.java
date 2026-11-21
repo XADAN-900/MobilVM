@@ -66,11 +66,23 @@ final class QemuEnv {
         return f.exists() ? f : null;
     }
 
-    /** 16/32-bit için i386 tercih edilir; yoksa x86_64 de gerçek modu ve 32-bit'i çalıştırır. */
+    /**
+     * Mimarinin motoru. 16/32-bit x86 için i386 tercih edilir (yoksa x86_64 de çalıştırır);
+     * 32-bit ARM aarch64 motoruyla, 32-bit PowerPC ppc64 motoruyla çalışır.
+     */
     static File systemBinary(Context c, String arch) {
-        if ("x86_64".equals(arch)) return bin(c, BIN_X86_64);
-        File f = bin(c, BIN_I386);
-        return f != null ? f : bin(c, BIN_X86_64);
+        File f = bin(c, "lib" + QemuArgs.binaryFor(arch) + ".so");
+        if (f == null && (arch.equals("x86_16") || arch.equals("x86_32"))) f = bin(c, BIN_X86_64);
+        return f;
+    }
+
+    /** APK'da motoru bulunan mimariler. */
+    static java.util.List<String> availableArchs(Context c) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String a : new String[]{"x86_16", "x86_32", "x86_64", "arm64", "arm32", "ppc", "ppc64", "riscv64"}) {
+            if (systemBinary(c, a) != null) out.add(a);
+        }
+        return out;
     }
 
     static boolean hasRuntimeAsset(Context c) {

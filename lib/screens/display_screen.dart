@@ -70,7 +70,8 @@ class _DisplayScreenState extends State<DisplayScreen> {
   void initState() {
     super.initState();
     // PS/2 fare (USB tablet kapalı) göreli çalışır: touchpad modu daha doğal
-    _mode = app.settings['mouseMode'] == 'trackpad' || !widget.vm.tablet || widget.vm.machine == 'isapc'
+    _mode = app.settings['mouseMode'] == 'trackpad' ||
+            (isX86Arch(widget.vm.arch) && (!widget.vm.tablet || widget.vm.machine == 'isapc'))
         ? MouseMode.trackpad
         : MouseMode.touch;
     app.displayOpen = true;
@@ -595,6 +596,11 @@ class _DisplayScreenState extends State<DisplayScreen> {
   Future<void> _saveState() async {
     if (!widget.vm.snapshotCapable) {
       toast(context, t('Durum kaydetmek için qcow2 disk gerekir.', 'Saving state requires a qcow2 disk.'));
+      return;
+    }
+    if (!widget.vm.saveStateCapable) {
+      toast(context, t('UEFI\'li VM\'lerde "Durumu kaydet" çalışmaz; anlık görüntüler yalnızca VM kapalıyken alınabilir.',
+          'With UEFI, "Save state" does not work; snapshots can be taken only while the VM is off.'));
       return;
     }
     final ok = await confirm(

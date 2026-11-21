@@ -3,160 +3,55 @@ package app.strata.vm;
 import android.content.Context;
 
 import java.io.File;
-import java.util.ArrayList;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
-import java.util.Locale;
 
-/** VmConfig'ten QEMU komut satırı üretir. */
+/** Android tarafı: dosya yollarını hazırlar, komut satırını QemuArgs üretir. */
 final class QemuCommand {
-    static final int VNC_DISPLAY = 1;
-    static final int VNC_PORT = 5900 + VNC_DISPLAY;
-    static final int QMP_PORT = 4445;
-    static final String SAVED_STATE = "strata-saved-state";
+    static final int VNC_DISPLAY = QemuArgs.VNC_DISPLAY;
+    static final int VNC_PORT = QemuArgs.VNC_PORT;
+    static final int QMP_PORT = QemuArgs.QMP_PORT;
+    static final String SAVED_STATE = QemuArgs.SAVED_STATE;
 
     private QemuCommand() {}
 
-    static String defaultCpu(String arch) {
-        switch (arch) {
-            case "x86_16": return "486";
-            case "x86_32": return "pentium3";
-            default: return "max";
-        }
-    }
-
     static List<String> build(Context c, VmConfig vm) {
         File bin = QemuEnv.systemBinary(c, vm.arch);
-        if (bin == null) throw new IllegalStateException("QEMU binary not found in APK");
-        int tb = Store.settingInt(c, "tbSize", 256);
+        if (bin == null) throw new IllegalStateException("QEMU engine for " + vm.arch + " not found in APK");
 
-        List<String> a = new ArrayList<>();
-        add(a, bin.getPath(), "-L", QemuEnv.shareDir(c).getPath(), "-name", esc(vm.name.isEmpty() ? "VM" : vm.name));
+        QemuArgs.Env env = new QemuArgs.Env();
+        env.binary = bin.getPath();
+        env.shareDir = QemuEnv.shareDir(c).getPath();
+        env.sharedDir = vm.sharedFolder ? QemuEnv.sharedDir(c, vm.id).getPath() : null;
+        env.tbSize = Store.settingInt(c, "tbSize", 256);
+        env.mttcg = Store.settingBool(c, "mttcg", true);
 
-        String machine = vm.machine.isEmpty() ? "pc" : vm.machine;
-        boolean isa = machine.equals("isapc");
-        add(a, "-M", machine);
-        add(a, "-cpu", vm.cpuModel.trim().isEmpty() ? defaultCpu(vm.arch) : vm.cpuModel.trim());
-        add(a, "-m", String.valueOf(Math.max(4, vm.ramMb)));
-        add(a, "-smp", String.valueOf(Math.max(1, vm.cpus)));
-        // Çok çekirdekli TCG: her sanal çekirdek ayrı iş parçacığında (x86 bellek sıralaması QEMU tarafından korunur)
-        boolean mttcg = vm.cpus > 1 && Store.settingBool(c, "mttcg", true);
-        add(a, "-accel", "tcg,tb-size=" + tb + (mttcg ? ",thread=multi" : ""));
-        if (!vm.vga.isEmpty()) add(a, "-vga", vm.vga);
-
-        // UEFI (OVMF/edk2): kod salt okunur, değişkenler VM'e özel kopyada
-        if ("uefi".equals(vm.firmware) && !vm.arch.equals("x86_16") && !isa) {
-            File share = QemuEnv.shareDir(c);
-            File code = new File(share, vm.arch.equals("x86_64") ? "edk2-x86_64-code.fd" : "edk2-i386-code.fd");
-            File varsTemplate = new File(share, "edk2-i386-vars.fd");
-            if (!code.exists() || !varsTemplate.exists()) throw new IllegalStateException("UEFI firmware missing");
-            File vars = new File(new File(c.getFilesDir(), "nvram"), vm.id.replaceAll("[^A-Za-z0-9-]", "_") + ".fd");
-            if (!vars.exists()) {
+        // UEFI: kod salt okunur, değişkenler VM'e (ve mimariye) özel kopyada
+        String[] uefi = QemuArgs.uefiFiles(vm);
+        if (uefi != null) {
+            File code = new File(QemuEnv.shareDir(c), uefi[0]);
+            File template = new File(QemuEnv.shareDir(c), uefi[1]);
+            if (!code.exists() || !template.exists()) throw new IllegalStateException("Firmware missing: " + uefi[0]);
+            File vars = nvramFile(c, vm);
+            if (!vars.exists() || vars.length() != template.length()) {
                 //noinspection ResultOfMethodCallIgnored
                 vars.getParentFile().mkdirs();
                 try {
-                    java.nio.file.Files.copy(varsTemplate.toPath(), vars.toPath());
-                } catch (java.io.IOException e) {
+                    Files.copy(template.toPath(), vars.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
                     throw new IllegalStateException("UEFI vars: " + e.getMessage());
                 }
             }
-            add(a, "-drive", "if=pflash,format=raw,unit=0,readonly=on,file=" + esc(code.getPath()));
-            add(a, "-drive", "if=pflash,format=raw,unit=1,file=" + esc(vars.getPath()));
+            env.nvramFile = vars.getPath();
         }
-
-        // Depolama: disk (ide0), CD (ide1-master, her zaman var ki sonradan ISO takılabilsin), disket
-        if (!vm.diskPath.isEmpty()) {
-            add(a, "-drive", "id=hd0,file=" + esc(vm.diskPath) + ",format=" + diskFormat(vm.diskPath)
-                    + ",if=ide,index=0,media=disk");
-        }
-        if (!vm.isoPath.isEmpty()) {
-            add(a, "-drive", "id=cd0,file=" + esc(vm.isoPath) + ",format=raw,if=ide,index=2,media=cdrom");
-        } else {
-            add(a, "-drive", "id=cd0,if=ide,index=2,media=cdrom");
-        }
-        if (vm.sharedFolder) {
-            // Telefondaki klasör VM'de ikinci sabit disk (FAT) olarak görünür.
-            // snapshot=on: misafirin yazdıkları geçici katmana gider, telefondaki dosyalar korunur.
-            add(a, "-drive", "id=share0,file=fat:" + QemuEnv.sharedDir(c, vm.id).getPath()
-                    + ",format=raw,if=ide,index=1,media=disk,snapshot=on");
-        }
-        if (!vm.floppyPath.isEmpty()) {
-            add(a, "-drive", "id=fd0,file=" + esc(vm.floppyPath) + ",format=raw,if=floppy,index=0");
-        }
-
-        // Ağ: QEMU'nun dahili NAT'ı (slirp) + port yönlendirme
-        if (vm.net) {
-            add(a, "-netdev", "user,id=n0" + hostForwards(vm.portForwards));
-            // PCI kartlarda PXE ROM'u kapat: ek firmware dosyasına gerek kalmaz
-            add(a, "-device", isa ? "ne2k_isa,netdev=n0"
-                    : (vm.nic.isEmpty() ? "e1000" : vm.nic) + ",netdev=n0,romfile=");
-        } else {
-            add(a, "-nic", "none");
-        }
-
-        if (vm.tablet && !isa) add(a, "-usb", "-device", "usb-tablet");
-
-        String order = vm.boot.equals("disk") ? "c" : vm.boot.equals("floppy") ? "a" : "d";
-        add(a, "-boot", "order=" + order + ",menu=on");
-        if (vm.rtcLocal) add(a, "-rtc", "base=localtime");
-
-        add(a, "-display", "none", "-vnc", "127.0.0.1:" + VNC_DISPLAY);
-        add(a, "-qmp", "tcp:127.0.0.1:" + QMP_PORT + ",server=on,wait=off");
-        if (!vm.keyboard.trim().isEmpty()) add(a, "-k", vm.keyboard.trim());
-        if (vm.savedState) add(a, "-loadvm", SAVED_STATE);
-
-        a.addAll(splitArgs(vm.extraArgs));
-        return a;
+        return QemuArgs.build(vm, env);
     }
 
-    static String diskFormat(String path) {
-        String p = path.toLowerCase(Locale.ROOT);
-        if (p.endsWith(".qcow2") || p.endsWith(".qcow")) return "qcow2";
-        if (p.endsWith(".vdi")) return "vdi";
-        if (p.endsWith(".vmdk")) return "vmdk";
-        if (p.endsWith(".vhd")) return "vpc";
-        if (p.endsWith(".vhdx")) return "vhdx";
-        return "raw";
+    static File nvramFile(Context c, VmConfig vm) {
+        return new File(new File(c.getFilesDir(), "nvram"),
+                vm.id.replaceAll("[^A-Za-z0-9-]", "_") + "-" + vm.arch + ".fd");
     }
 
-    /** "tcp:2222:22, udp:5000:5000" -> ",hostfwd=tcp::2222-:22,hostfwd=udp::5000-:5000" */
-    static String hostForwards(String spec) {
-        StringBuilder sb = new StringBuilder();
-        for (String part : spec.split("[,;\\s]+")) {
-            String[] f = part.trim().split(":");
-            if (f.length == 3 && (f[0].equals("tcp") || f[0].equals("udp"))
-                    && f[1].matches("\\d+") && f[2].matches("\\d+")) {
-                sb.append(",hostfwd=").append(f[0]).append("::").append(f[1]).append("-:").append(f[2]);
-            }
-        }
-        return sb.toString();
-    }
-
-    private static String esc(String path) { return path.replace(",", ",,"); }
-
-    private static void add(List<String> list, String... items) {
-        for (String s : items) list.add(s);
-    }
-
-    /** Boşluklara göre böler; "tırnak içi" tek argümandır. */
-    static List<String> splitArgs(String s) {
-        List<String> out = new ArrayList<>();
-        StringBuilder cur = new StringBuilder();
-        char quote = 0;
-        boolean has = false;
-        for (char ch : s.toCharArray()) {
-            if (quote != 0 && ch == quote) {
-                quote = 0;
-            } else if (quote == 0 && (ch == '"' || ch == '\'')) {
-                quote = ch;
-                has = true;
-            } else if (quote == 0 && Character.isWhitespace(ch)) {
-                if (has) { out.add(cur.toString()); cur.setLength(0); has = false; }
-            } else {
-                cur.append(ch);
-                has = true;
-            }
-        }
-        if (has) out.add(cur.toString());
-        return out;
-    }
+    static String diskFormat(String path) { return QemuArgs.diskFormat(path); }
 }

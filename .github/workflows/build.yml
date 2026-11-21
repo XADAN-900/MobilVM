@@ -43,6 +43,20 @@ jobs:
       - name: Test imajları üret (kendi OS, disketler, gerçek Linux ISO'ları)
         run: bash scripts/make_test_media.sh "$RUNNER_TEMP/media"
 
+      - name: QEMU açılış testi (tüm mimariler, gerçek QEMU ile)
+        run: |
+          sudo apt-get install -y -qq qemu-system-x86 qemu-system-arm qemu-system-ppc qemu-system-misc qemu-utils >/dev/null
+          qemu-system-x86_64 --version | head -1
+          mkdir -p "$RUNNER_TEMP/rt" "$RUNNER_TEMP/smoke-classes"
+          unzip -q -o android/app/src/main/assets/qemu-runtime.zip 'share/*' -d "$RUNNER_TEMP/rt"
+          curl -fsSL -o "$RUNNER_TEMP/json.jar" https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/smoke-classes" -cp "$RUNNER_TEMP/json.jar" \
+            android/app/src/main/java/app/strata/vm/QemuArgs.java \
+            android/app/src/main/java/app/strata/vm/VmConfig.java \
+            scripts/QemuArgsSmoke.java
+          java -cp "$RUNNER_TEMP/smoke-classes:$RUNNER_TEMP/json.jar" app.strata.vm.QemuArgsSmoke \
+            "$RUNNER_TEMP/rt/share/qemu" "$RUNNER_TEMP/smoke" "$RUNNER_TEMP/media"
+
       - name: İşletim sistemi algılama testleri
         env:
           STRATA_TEST_MEDIA: ${{ runner.temp }}/media
