@@ -17,11 +17,10 @@ class AppState extends ChangeNotifier {
 
   Map<String, dynamic> device = {};
   Map<String, dynamic> settings = {
-    'language': 'en',
     'theme': 'dark',
     'filter': 'smooth',
     'mouseMode': 'touch',
-    'tbSize': 256,
+    'tbCache': 0, // 0 = otomatik (telefon belleğinin 1/8'i, en fazla 1 GB)
     'keyboard': 'en-us',
     'mttcg': true,
   };
@@ -38,13 +37,22 @@ class AppState extends ChangeNotifier {
   Stream<Map<String, dynamic>> get events => _events.stream;
   StreamSubscription? _sub;
 
-  /// Seçili dil. İlk açılışta İngilizce; eski sürümlerdeki "system" ayarı cihaz diline çevrilir.
+  /// Yalnızca testler için: cihaz dili yerine bu dil kullanılır.
+  String? languageOverride;
+
+  /// Arayüz dili telefonun dilini izler; desteklenmeyen bir dilse İngilizce.
+  /// (Telefonda dil sırası "Türkçe, English" gibiyse ilk desteklenen seçilir.)
   String get lang {
-    final l = settings['language'] as String? ?? 'en';
-    if (languages.containsKey(l)) return l;
-    final device = ui.PlatformDispatcher.instance.locale.languageCode;
-    return languages.containsKey(device) ? device : 'en';
+    final o = languageOverride;
+    if (o != null && languages.containsKey(o)) return o;
+    for (final l in ui.PlatformDispatcher.instance.locales) {
+      if (languages.containsKey(l.languageCode)) return l.languageCode;
+    }
+    return 'en';
   }
+
+  /// Telefonun dili değişince arayüzü yeniden çiz.
+  void localeChanged() => notifyListeners();
 
   bool get qemuOk => device['qemu64'] == true || device['qemu32'] == true;
 

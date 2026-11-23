@@ -37,7 +37,8 @@ final class VmConfig {
     String kernelPath = "";        // doğrudan çekirdek açılışı (-kernel)
     String initrdPath = "";        // -initrd
     String kernelArgs = "";        // -append
-    String biosPath = "";          // özel BIOS / ROM (-bios), ör. Macintosh Quadra ROM
+    String biosPath = "";
+    String diskBus = "ide";        // ide | virtio (x86 sabit disk arayüzü)          // özel BIOS / ROM (-bios), ör. Macintosh Quadra ROM
     long createdAt = 0;
     long lastRunAt = 0;
 
@@ -73,6 +74,7 @@ final class VmConfig {
         v.initrdPath = str(m, "initrdPath", v.initrdPath);
         v.kernelArgs = str(m, "kernelArgs", v.kernelArgs);
         v.biosPath = str(m, "biosPath", v.biosPath);
+        v.diskBus = str(m, "diskBus", v.diskBus);
         v.createdAt = num(m, "createdAt", 0);
         v.lastRunAt = num(m, "lastRunAt", 0);
         return v;
@@ -110,6 +112,7 @@ final class VmConfig {
         m.put("initrdPath", initrdPath);
         m.put("kernelArgs", kernelArgs);
         m.put("biosPath", biosPath);
+        m.put("diskBus", diskBus);
         m.put("createdAt", createdAt);
         m.put("lastRunAt", lastRunAt);
         return m;

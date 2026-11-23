@@ -494,6 +494,27 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
               ),
             ]),
+            if (v.arch != 'x86_16' && v.machine != 'isapc') ...[
+              const SizedBox(height: 12),
+              _dropdown<String>(
+                t('Disk arayüzü', 'Disk interface'),
+                v.diskBus == 'virtio' ? 'virtio' : 'ide',
+                {
+                  'ide': t('IDE (her sistemle uyumlu)', 'IDE (works with every OS)'),
+                  'virtio': t('VirtIO (hızlı, Linux / BSD)', 'VirtIO (fast, Linux / BSD)'),
+                },
+                (x) => setState(() => v.diskBus = x),
+              ),
+              if (v.diskBus == 'virtio')
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    t('Windows ve kurulu eski sistemler VirtIO diski sürücüsüz göremez; kurulu bir Linux\'u değiştirirken önce yedek al.',
+                        'Windows and older installed systems cannot see a VirtIO disk without drivers; back up before switching an installed Linux.'),
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                ),
+            ],
             const SizedBox(height: 12),
             _dropdown<String>(
               'Firmware',

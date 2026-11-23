@@ -102,7 +102,11 @@ class OsType {
     ..tablet = tablet
     ..sound = 'auto'
     ..clipboard = clipboardDefault
+    ..diskBus = fastDisk ? 'virtio' : 'ide'
     ..firmware = id == 'win11' || uefi ? 'uefi' : 'bios';
+
+  /// Yeni 64-bit Linux/BSD kurulumları hızlı virtio diske kurulur (çekirdekleri sürücüyü içerir).
+  bool get fastDisk => arch == 'x86_64' && (family == 'linux' || family == 'bsd');
 
   /// Pano aygıtı (virtio-serial) eski sistemlerde "bilinmeyen aygıt" sorar; onlarda kapalı başlar.
   bool get clipboardDefault =>
@@ -180,7 +184,7 @@ const osCatalog = <OsType>[
       diskMb: 4096, tipTr: 'Çok hafif. SSH için port: tcp:2222:22', tipEn: 'Very light. SSH port: tcp:2222:22'),
   OsType(id: 'debian', family: 'linux', name: 'Debian (64-bit)', badge: 'DEB', arch: 'x86_64', ram: 1024,
       cpus: 2, diskMb: 16384, tipTr: 'netinst ISO ile metin modunda kur', tipEn: 'Install the netinst ISO in text mode'),
-  OsType(id: 'debian32', family: 'linux', name: 'Debian (32-bit)', badge: 'DEB', arch: 'x86_32', cpu: 'pentium3',
+  OsType(id: 'debian32', family: 'linux', name: 'Debian (32-bit)', badge: 'DEB', arch: 'x86_32', cpu: 'max',
       ram: 768, diskMb: 12288),
   OsType(id: 'ubuntu', family: 'linux', name: 'Ubuntu (64-bit)', badge: 'UB', arch: 'x86_64', ram: 3072,
       cpus: 2, diskMb: 30720, heavy: true, tipTr: 'Server sürümü masaüstüden çok daha hızlıdır',
@@ -207,7 +211,7 @@ const osCatalog = <OsType>[
       diskMb: 20480),
   OsType(id: 'voidlinux', family: 'linux', name: 'Void Linux (64-bit)', badge: 'VOI', arch: 'x86_64', ram: 1024,
       cpus: 2, diskMb: 8192),
-  OsType(id: 'puppy', family: 'linux', name: 'Puppy Linux', badge: 'PUP', arch: 'x86_32', cpu: 'pentium3', ram: 512,
+  OsType(id: 'puppy', family: 'linux', name: 'Puppy Linux', badge: 'PUP', arch: 'x86_32', cpu: 'max', ram: 512,
       diskMb: 4096, tipTr: 'Tamamen RAM\'de çalışır, hızlıdır', tipEn: 'Runs entirely in RAM, fast'),
   OsType(id: 'dsl', family: 'linux', name: 'Damn Small Linux', badge: 'DSL', arch: 'x86_32', cpu: 'pentium',
       vga: 'cirrus', ram: 128, diskMb: 1024),
@@ -218,10 +222,10 @@ const osCatalog = <OsType>[
       diskMb: 32768, heavy: true, uefi: true),
   OsType(id: 'tinycore', family: 'linux', name: 'Tiny Core Linux', badge: 'TC', arch: 'x86_32', cpu: 'pentium3',
       ram: 256, diskMb: 1024, tipTr: '~20 MB, saniyeler içinde açılır', tipEn: '~20 MB, boots in seconds'),
-  OsType(id: 'antix', family: 'linux', name: 'antiX (32-bit)', badge: 'AX', arch: 'x86_32', cpu: 'pentium3',
+  OsType(id: 'antix', family: 'linux', name: 'antiX (32-bit)', badge: 'AX', arch: 'x86_32', cpu: 'max',
       ram: 512, diskMb: 8192),
   OsType(id: 'linux32', family: 'linux', name: 'Linux (32-bit, other)', badge: 'L32', arch: 'x86_32',
-      cpu: 'pentium3', ram: 512, diskMb: 8192),
+      cpu: 'max', ram: 512, diskMb: 8192),
   OsType(id: 'linux64', family: 'linux', name: 'Linux (64-bit, other)', badge: 'L64', arch: 'x86_64', ram: 1024,
       cpus: 2, diskMb: 16384),
 

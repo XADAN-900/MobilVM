@@ -28,7 +28,7 @@ final class QemuArgs {
         String shareDir;
         String nvramFile;   // UEFI değişkenleri (VM'e özel kopya); UEFI kullanılmıyorsa null olabilir
         String sharedDir;   // paylaşılan klasör
-        int tbSize = 256;
+        int tbSize = 512;
         boolean mttcg = true;
         boolean audio = true; // ayarlardan ses kapatıldıysa hiç ses aygıtı eklenmez
     }
@@ -203,8 +203,26 @@ final class QemuArgs {
         return "fat:" + (vm.sharedWritable ? "rw:" : "") + env.sharedDir + ",format=raw" + (vm.sharedWritable ? "" : ",snapshot=on");
     }
 
+    /**
+     * x86 "max" işlemcisi yazılımsal emülasyonda 5 seviyeli sayfa tablosunu (la57) da açar; Linux bunu görünce
+     * her TLB ıskasında 5 seviye yürür. Kapatınca belleğe erişim belirgin biçimde hızlanır, uyumluluk değişmez.
+     */
+    static String cpuFor(VmConfig vm) {
+        String cpu = vm.cpuModel.trim().isEmpty() ? defaultCpu(vm.arch) : vm.cpuModel.trim();
+        if (isX86(vm.arch) && cpu.startsWith("max") && !cpu.contains("la57")) cpu += ",la57=off";
+        return cpu;
+    }
+
+    /** Linux/BSD'nin hızlı disk yolu: virtio-blk (IDE'de tek komut sırası vardır, kurulum çok yavaşlar). */
+    static boolean virtioDisk(VmConfig vm) {
+        return "virtio".equals(vm.diskBus) && isX86(vm.arch) && !vm.arch.equals("x86_16") && !"isapc".equals(vm.machine);
+    }
+
+    /** Misafirin tercih ettiği ekran çözünürlüğü (EDID). Daha az piksel = yazılımsal çizimde daha hızlı masaüstü. */
+    static final int PREF_W = 1024, PREF_H = 768;
+
     private static void common(List<String> a, VmConfig vm, Env env, int cpus) {
-        add(a, "-cpu", vm.cpuModel.trim().isEmpty() ? defaultCpu(vm.arch) : vm.cpuModel.trim());
+        add(a, "-cpu", cpuFor(vm));
         add(a, "-m", String.valueOf(Math.max(4, Math.min(vm.ramMb, maxRam(vm.arch)))));
         add(a, "-smp", String.valueOf(cpus));
         // Çok çekirdekli TCG: her sanal çekirdek ayrı iş parçacığında
@@ -238,10 +256,16 @@ final class QemuArgs {
         add(a, "-M", machine + (snd.equals("none") ? "" : ",pcspk-audiodev=" + AUDIODEV));
         common(a, vm, env, Math.max(1, Math.min(vm.cpus, maxCpus(vm.arch))));
         if (!vm.vga.isEmpty()) add(a, "-vga", vm.vga);
+        if (vm.vga.equals("std")) add(a, "-global", "VGA.xres=" + PREF_W, "-global", "VGA.yres=" + PREF_H);
+        if (vm.vga.equals("virtio")) add(a, "-global", "virtio-vga.xres=" + PREF_W, "-global", "virtio-vga.yres=" + PREF_H);
         if (!vm.arch.equals("x86_16")) uefi(a, vm, env);
 
         // Depolama: disk (ide0), CD (ide1-master, her zaman var ki sonradan ISO takılabilsin), disket
-        if (!vm.diskPath.isEmpty()) {
+        if (!vm.diskPath.isEmpty() && virtioDisk(vm)) {
+            add(a, "-drive", "id=hd0,if=none,file=" + esc(vm.diskPath) + ",format=" + diskFormat(vm.diskPath)
+                    + ",discard=unmap,detect-zeroes=unmap");
+            add(a, "-device", "virtio-blk-pci,drive=hd0,num-queues=" + Math.max(1, Math.min(vm.cpus, 4)));
+        } else if (!vm.diskPath.isEmpty()) {
             add(a, "-drive", "id=hd0,file=" + esc(vm.diskPath) + ",format=" + diskFormat(vm.diskPath)
                     + ",if=ide,index=0,media=disk");
         }
@@ -263,7 +287,8 @@ final class QemuArgs {
         if (vm.tablet && !isa) add(a, "-usb", "-device", "usb-tablet");
 
         String order = vm.boot.equals("disk") ? "c" : vm.boot.equals("floppy") ? "a" : "d";
-        add(a, "-boot", "order=" + order + ",menu=on");
+        // Menü yine açılabilir ama SeaBIOS her açılışta 2,5 sn beklemez
+        add(a, "-boot", "order=" + order + ",menu=on,splash-time=800");
         if (vm.rtcLocal) add(a, "-rtc", "base=localtime");
     }
 
@@ -331,7 +356,7 @@ final class QemuArgs {
         if (vm.arch.equals("ppc64")) {
             add(a, "-vga", "std");
         } else {
-            add(a, "-device", "virtio-gpu-pci");
+            add(a, "-device", "virtio-gpu-pci,xres=" + PREF_W + ",yres=" + PREF_H);
         }
         add(a, "-device", "qemu-xhci,id=xhci", "-device", "usb-kbd,bus=xhci.0", "-device", "usb-tablet,bus=xhci.0");
 

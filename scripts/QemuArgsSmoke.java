@@ -65,6 +65,10 @@ public class QemuArgsSmoke {
         cases.add(new Object[]{"Motorola 68k virt", vm("m68k", v -> {
             v.machine = "virt"; v.ramMb = 256; v.diskPath = disk.getPath(); v.kernelPath = kernel68k.getPath();
         })});
+        cases.add(new Object[]{"x86 64-bit Linux: VirtIO disk + 4 çekirdek + 1024x768", vm("x86_64", v -> {
+            v.template = "ubuntu"; v.diskBus = "virtio"; v.diskPath = disk.getPath(); v.cpus = 4; v.ramMb = 1024;
+            v.vga = "std"; v.isoPath = mediaFile("myos64.iso");
+        })});
         cases.add(new Object[]{"x86 32-bit (Windows XP profili)", vm("x86_32", v -> {
             v.vga = "cirrus"; v.nic = "rtl8139"; v.ramMb = 512; v.cpus = 1; v.diskPath = disk.getPath();
             v.isoPath = mediaFile("myos32.iso");

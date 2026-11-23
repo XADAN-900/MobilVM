@@ -26,7 +26,7 @@ final _vms = [
   VmConfig(
       id: 'b', name: 'TyrOS 1.0', template: 'debian', arch: 'x86_64', ramMb: 2048, cpus: 2,
       isoPath: '/img/TyrOS_v1_0.iso', diskPath: '/img/TyrOS.qcow2', net: true, portForwards: 'tcp:2222:22, tcp:8080:80',
-      sharedFolder: true, createdAt: 2),
+      sharedFolder: true, diskBus: 'virtio', createdAt: 2),
   VmConfig(id: 'c', name: 'MS-DOS 6.22', template: 'msdos', arch: 'x86_16', ramMb: 16, cpus: 1,
       floppyPath: '/img/Disk1.img', boot: 'floppy', createdAt: 3),
   VmConfig(id: 'd', name: 'Debian ARM64 sunucu', template: 'debian_arm64', arch: 'arm64', ramMb: 1024, cpus: 2,
@@ -105,7 +105,7 @@ void _seedState() {
 }
 
 Widget _wrap(Widget home, String lang, double scale) {
-  app.settings['language'] = lang;
+  app.languageOverride = lang;
   return MaterialApp(
     theme: buildTheme(Brightness.dark),
     locale: Locale(lang),
@@ -132,7 +132,7 @@ void main() {
     _mockBackend();
     _seedState();
   });
-  tearDown(() => app.settings['language'] = 'en');
+  tearDown(() => app.languageOverride = null);
 
   // Dar telefon (320) ve normal telefon (360); yüksekliği büyük tut ki listedeki her şey çizilsin.
   const widths = [320.0, 360.0];

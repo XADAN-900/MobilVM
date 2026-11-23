@@ -85,7 +85,11 @@ class _WizardScreenState extends State<WizardScreen> {
       if (os.boot == 'floppy' && floppy.isEmpty && iso.isNotEmpty) _vm.boot = 'cd';
       if (os.boot == 'cd' && iso.isEmpty && floppy.isNotEmpty) _vm.boot = 'floppy';
       _vm.ramMb = math.min(_vm.ramMb, maxRamFor(_vm.arch));
-      _vm.cpus = math.min(_vm.cpus, math.max(1, math.min(app.cores, 8)));
+      // Büyük sistemler ve 64-bit Linux açılışta çok çekirdekten yararlanır (her sanal çekirdek ayrı telefon çekirdeğinde)
+      if (os.heavy || (os.arch == 'x86_64' && (os.family == 'linux' || os.family == 'bsd'))) {
+        _vm.cpus = math.max(_vm.cpus, math.min(4, app.cores ~/ 2));
+      }
+      _vm.cpus = math.min(_vm.cpus, math.max(1, math.min(app.cores, archMaxCpus(_vm.arch))));
       _diskMb = os.diskMb == 0 ? 1024 : os.diskMb;
       if (_diskMode != _DiskMode.existing) {
         _diskMode = os.diskMb == 0 ? _DiskMode.none : _DiskMode.create;

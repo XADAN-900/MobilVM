@@ -39,6 +39,7 @@ class VmConfig {
   String initrdPath;
   String kernelArgs;
   String biosPath;
+  String diskBus;
   int createdAt;
   int lastRunAt;
 
@@ -73,6 +74,7 @@ class VmConfig {
     this.initrdPath = '',
     this.kernelArgs = '',
     this.biosPath = '',
+    this.diskBus = 'ide',
     this.createdAt = 0,
     this.lastRunAt = 0,
   });
@@ -112,6 +114,7 @@ class VmConfig {
       initrdPath: s('initrdPath', ''),
       kernelArgs: s('kernelArgs', ''),
       biosPath: s('biosPath', ''),
+      diskBus: s('diskBus', 'ide'),
       createdAt: n('createdAt', 0),
       lastRunAt: n('lastRunAt', 0),
     );
@@ -148,6 +151,7 @@ class VmConfig {
         'initrdPath': initrdPath,
         'kernelArgs': kernelArgs,
         'biosPath': biosPath,
+        'diskBus': diskBus,
         'createdAt': createdAt,
         'lastRunAt': lastRunAt,
       };

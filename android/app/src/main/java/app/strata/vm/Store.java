@@ -67,7 +67,7 @@ final class Store {
         m.put("theme", "dark");        // system | dark | light
         m.put("filter", "smooth");     // smooth | sharp
         m.put("mouseMode", "touch");   // touch | trackpad
-        m.put("tbSize", 256);          // TCG çeviri önbelleği (MB)
+        m.put("tbCache", 0);           // TCG çeviri önbelleği (MB), 0 = otomatik
         m.put("keyboard", "en-us");
         m.put("mttcg", true);          // çok çekirdekli emülasyon
         m.put("sound", true);          // VM sesi telefona aktarılsın

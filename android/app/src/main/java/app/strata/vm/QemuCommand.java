@@ -24,7 +24,7 @@ final class QemuCommand {
         env.binary = bin.getPath();
         env.shareDir = QemuEnv.shareDir(c).getPath();
         env.sharedDir = vm.sharedFolder ? QemuEnv.sharedDir(c, vm.id).getPath() : null;
-        env.tbSize = Store.settingInt(c, "tbSize", 256);
+        env.tbSize = tbCacheMb(c, Store.settingInt(c, "tbCache", 0));
         env.mttcg = Store.settingBool(c, "mttcg", true);
         env.audio = Store.settingBool(c, "sound", true);
 
@@ -55,4 +55,17 @@ final class QemuCommand {
     }
 
     static String diskFormat(String path) { return QemuArgs.diskFormat(path); }
+
+    /**
+     * TCG çeviri önbelleği. Küçükse büyük masaüstü sistemlerde önbellek dolar, her şey yeniden çevrilir
+     * ve sistem sürünür. 0 = otomatik: telefon belleğinin 1/8'i, 256 MB ile 1 GB arası (QEMU'nun kendi varsayılanı gibi).
+     */
+    static int tbCacheMb(Context c, int setting) {
+        if (setting > 0) return setting;
+        android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
+        android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        long mb = mi.totalMem / (1024 * 1024);
+        return (int) Math.max(256, Math.min(1024, mb / 8));
+    }
 }

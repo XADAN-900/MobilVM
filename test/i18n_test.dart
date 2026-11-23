@@ -3,7 +3,7 @@ import 'package:strata_vm/models.dart';
 import 'package:strata_vm/state.dart';
 
 void main() {
-  tearDown(() => app.settings['language'] = 'en');
+  tearDown(() => app.languageOverride = null);
 
   test('ilk açılış İngilizce', () {
     expect(app.lang, 'en');
@@ -23,18 +23,18 @@ void main() {
     };
     expect(languages.keys.toSet(), expected.keys.toSet());
     for (final e in expected.entries) {
-      app.settings['language'] = e.key;
+      app.languageOverride = e.key;
       expect(t('Ayarlar', 'Settings'), e.value, reason: e.key);
     }
   });
 
   test('yer tutucular ve OS adları', () {
-    app.settings['language'] = 'de';
+    app.languageOverride = 'de';
     expect(t('"{0}" silinsin mi?', 'Delete "{0}"?', ['XP']), '„XP“ löschen?');
     expect(osById('custom').label, 'Andere / Unbekannt (64-Bit)');
-    app.settings['language'] = 'tr';
+    app.languageOverride = 'tr';
     expect(osById('linux64').label, 'Linux (64-bit, diğer)');
-    app.settings['language'] = 'ar';
+    app.languageOverride = 'ar';
     expect(rtlLanguages.contains(app.lang), isTrue);
   });
 }

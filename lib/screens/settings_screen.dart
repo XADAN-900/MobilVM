@@ -61,19 +61,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
             children: [
               SectionCard(title: t('Görünüm', 'Appearance'), icon: Icons.palette_outlined, children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: DropdownButtonFormField<String>(
-                    value: app.lang,
-                    isExpanded: true,
-                    decoration: InputDecoration(labelText: t('Dil', 'Language'), prefixIcon: const Icon(Icons.translate_rounded)),
-                    items: [
-                      for (final e in languages.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) app.setSetting('language', v);
-                    },
-                  ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.translate_rounded),
+                  title: Text(t('Dil', 'Language')),
+                  subtitle: Text('${languages[app.lang]} · ${t('telefonun diline göre', 'follows your phone language')}'),
                 ),
                 _seg<String>(t('Tema', 'Theme'), null, s['theme'] as String? ?? 'dark',
                     {'dark': t('Koyu', 'Dark'), 'light': t('Açık', 'Light'), 'system': t('Sistem', 'System')},
@@ -129,10 +121,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SectionCard(title: t('Performans', 'Performance'), icon: Icons.speed_rounded, children: [
                 _seg<int>(
                     t('Kod çeviri önbelleği', 'Translation cache'),
-                    t('Büyük önbellek = daha hızlı, ama daha çok RAM', 'Bigger cache = faster, but more RAM'),
-                    (s['tbSize'] as num?)?.toInt() ?? 256,
-                    {128: '128 MB', 256: '256 MB', 512: '512 MB'},
-                    (v) => app.setSetting('tbSize', v)),
+                    t('Büyük önbellek = büyük sistemlerde çok daha hızlı, ama daha çok RAM',
+                        'Bigger cache = much faster for big systems, but more RAM'),
+                    (s['tbCache'] as num?)?.toInt() ?? 0,
+                    {0: t('Otomatik', 'Automatic'), 256: '256 MB', 512: '512 MB', 1024: '1 GB'},
+                    (v) => app.setSetting('tbCache', v)),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: s['mttcg'] != false,

@@ -122,6 +122,9 @@ void main() {
       ..sharedFolder = true
       ..sharedWritable = true;
     expect(w.saveStateCapable, isFalse);
+    expect(osById('debian').create().diskBus, 'virtio');
+    expect(osById('win10').create().diskBus, 'ide');
+    expect(osById('debian32').create().diskBus, 'ide');
     expect(w.snapshotCapable, isFalse);
   });
 

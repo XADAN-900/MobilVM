@@ -59,12 +59,23 @@ class StrataApp extends StatefulWidget {
   State<StrataApp> createState() => _StrataAppState();
 }
 
-class _StrataAppState extends State<StrataApp> {
+class _StrataAppState extends State<StrataApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     app.init();
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Telefonun dili değiştirildiğinde uygulama da hemen o dile geçer
+  @override
+  void didChangeLocales(List<Locale>? locales) => app.localeChanged();
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +93,7 @@ class _StrataAppState extends State<StrataApp> {
             'system' => ThemeMode.system,
             _ => ThemeMode.dark,
           },
-          // Dil: ilk açılışta İngilizce; Arapçada arayüz sağdan sola dizilir
+          // Dil: telefonun dili (desteklenmiyorsa İngilizce); Arapçada arayüz sağdan sola dizilir
           locale: Locale(app.lang),
           supportedLocales: [for (final l in languages.keys) Locale(l)],
           localizationsDelegates: const [
